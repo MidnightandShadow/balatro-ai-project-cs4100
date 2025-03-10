@@ -47,7 +47,7 @@ def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind
 
     print(f"times won: {times_won}/{games_to_play}")
     print(f"times lost: {times_lost}/{games_to_play}")
-    percent_won = ((times_won - times_lost) / (times_won + times_lost)) * 100
+    percent_won = (times_won / games_to_play) * 100
     print(f"% won: {percent_won}%")
     print(f"% lost: {100 - percent_won}%")
     print(TEXT_HASH_SEPARATOR)
@@ -57,4 +57,4 @@ def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind
 if __name__ == '__main__':
     play_a_single_default_game_with_a_single_strategy_and_observe_it(PrioritizeFlushSimple(), [PlayerObserver()])
     print(f"\n{TEXT_HASH_SEPARATOR}\n{TEXT_HASH_SEPARATOR}\n")
-    play_games_with_a_single_strategy(PrioritizeFlushSimple(), games_to_play=10000, blind_chips=SMALL_BLIND_CHIPS)
+    play_games_with_a_single_strategy(PrioritizeFlushSimple(), games_to_play=1000, blind_chips=SMALL_BLIND_CHIPS)
