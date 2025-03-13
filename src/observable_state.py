@@ -1,4 +1,4 @@
-from common import *
+from src.common import *
 
 
 # Represents the state of Balatro that is observable by the player agent (see: description.md)

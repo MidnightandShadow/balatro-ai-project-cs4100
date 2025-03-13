@@ -4,7 +4,7 @@ import random
 
 from ordered_set import OrderedSet
 
-from common import *
+from src.common import *
 from src.constants import (
     OBSERVABLE_HAND_SIZE,
     SMALL_BLIND_CHIPS,
