@@ -35,7 +35,7 @@ def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind
 
     times_won = 0
     times_lost = 0
-    for n in range(games_to_play):
+    for _ in range(games_to_play):
         new_deck = generate_deck()
         new_game = GameState(blind_chips=blind_chips, scored_chips=0, hand_actions=HAND_ACTIONS,
                              discard_actions=DISCARD_ACTIONS, deck=new_deck)
@@ -52,9 +52,3 @@ def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind
     print(f"% lost: {100 - percent_won}%")
     print(TEXT_HASH_SEPARATOR)
     print("GAME END")
-
-
-if __name__ == '__main__':
-    play_a_single_default_game_with_a_single_strategy_and_observe_it(PrioritizeFlushSimple(), [PlayerObserver()])
-    print(f"\n{TEXT_HASH_SEPARATOR}\n{TEXT_HASH_SEPARATOR}\n")
-    play_games_with_a_single_strategy(PrioritizeFlushSimple(), games_to_play=1000, blind_chips=SMALL_BLIND_CHIPS)
