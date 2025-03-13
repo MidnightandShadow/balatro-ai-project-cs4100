@@ -1,9 +1,10 @@
 import sys
+
 sys.path.extend([".", "./src"])
 
 from src.main import *
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     play_a_single_default_game_with_a_single_strategy_and_observe_it(
         PrioritizeFlushSimple(), [PlayerObserver()]
     )

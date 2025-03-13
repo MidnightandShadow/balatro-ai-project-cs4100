@@ -1,4 +1,9 @@
-from src.constants import TEXT_HASH_SEPARATOR, SMALL_BLIND_CHIPS, HAND_ACTIONS, DISCARD_ACTIONS
+from src.constants import (
+    TEXT_HASH_SEPARATOR,
+    SMALL_BLIND_CHIPS,
+    HAND_ACTIONS,
+    DISCARD_ACTIONS,
+)
 from src.game_state import INITIAL_GAME_STATE, GameState, generate_deck
 from src.observer import PlayerObserver, Observer
 from src.observer_manager import ObserverManager
@@ -9,7 +14,9 @@ from src.strategy import *
 # This file contains top-level scripts to run games with strategies (and observe as desired).
 
 
-def play_a_single_default_game_with_a_single_strategy_and_observe_it(strategy: Strategy, observers: list[Observer]):
+def play_a_single_default_game_with_a_single_strategy_and_observe_it(
+    strategy: Strategy, observers: list[Observer]
+):
     print("GAME START")
     print(f"Strategy chosen: {strategy}")
     print(TEXT_HASH_SEPARATOR)
@@ -25,7 +32,9 @@ def play_a_single_default_game_with_a_single_strategy_and_observe_it(strategy: S
     print("GAME END")
 
 
-def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind_chips=SMALL_BLIND_CHIPS):
+def play_games_with_a_single_strategy(
+    strategy: Strategy, games_to_play=1, blind_chips=SMALL_BLIND_CHIPS
+):
     print("GAME START")
     print(f"Chips to beat: {blind_chips}\nStrategy chosen: {strategy}")
     print(TEXT_HASH_SEPARATOR)
@@ -37,8 +46,13 @@ def play_games_with_a_single_strategy(strategy: Strategy, games_to_play=1, blind
     times_lost = 0
     for _ in range(games_to_play):
         new_deck = generate_deck()
-        new_game = GameState(blind_chips=blind_chips, scored_chips=0, hand_actions=HAND_ACTIONS,
-                             discard_actions=DISCARD_ACTIONS, deck=new_deck)
+        new_game = GameState(
+            blind_chips=blind_chips,
+            scored_chips=0,
+            hand_actions=HAND_ACTIONS,
+            discard_actions=DISCARD_ACTIONS,
+            deck=new_deck,
+        )
         player_won = simulate_game(new_game, player, observer_manager)
         if player_won:
             times_won += 1

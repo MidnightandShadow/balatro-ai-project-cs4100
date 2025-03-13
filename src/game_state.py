@@ -5,15 +5,27 @@ import random
 from ordered_set import OrderedSet
 
 from common import *
-from src.constants import OBSERVABLE_HAND_SIZE, SMALL_BLIND_CHIPS, HAND_ACTIONS, DISCARD_ACTIONS
+from src.constants import (
+    OBSERVABLE_HAND_SIZE,
+    SMALL_BLIND_CHIPS,
+    HAND_ACTIONS,
+    DISCARD_ACTIONS,
+)
 from src.observable_state import ObservableState
 
 
 # Represents a complete state of Balatro as according to description.md
 class GameState:
     # INVARIANT: If you want the deck to be shuffled, it is the caller's responsibility to pre-shuffle it
-    def __init__(self, blind_chips: int, scored_chips: int, hand_actions: int, discard_actions: int,
-                 deck: OrderedSet[Card], observable_hand: list[Card] = None):
+    def __init__(
+        self,
+        blind_chips: int,
+        scored_chips: int,
+        hand_actions: int,
+        discard_actions: int,
+        deck: OrderedSet[Card],
+        observable_hand: list[Card] = None,
+    ):
         self.blind_chips = blind_chips
         self.scored_chips = scored_chips
         self.hand_actions = hand_actions
@@ -29,7 +41,10 @@ class GameState:
     # INVARIANT: there will always be enough cards in the deck to draw n cards, given the rules of the game.
     def replace_played_cards(self, played_cards: list[Card]) -> GameState:
         replacement_cards = _draw_cards(self.deck, len(played_cards))
-        new_hand = list(filter(lambda card: card not in played_cards, self.observable_hand)) + replacement_cards
+        new_hand = (
+            list(filter(lambda card: card not in played_cards, self.observable_hand))
+            + replacement_cards
+        )
         return self.update_observable_hand(new_hand)
 
     # The game is over when scored_chips >= blind_chips or hand_actions = 0
@@ -41,30 +56,66 @@ class GameState:
         return self.is_game_over() and self.scored_chips >= self.blind_chips
 
     def game_state_to_observable_state(self) -> ObservableState:
-        return ObservableState(self.blind_chips, self.scored_chips, self.hand_actions, self.discard_actions,
-                               len(self.deck), self.observable_hand)
+        return ObservableState(
+            self.blind_chips,
+            self.scored_chips,
+            self.hand_actions,
+            self.discard_actions,
+            len(self.deck),
+            self.observable_hand,
+        )
 
     def copy(self) -> GameState:
-        return GameState(self.blind_chips, self.scored_chips, self.hand_actions, self.discard_actions,
-                         self.deck.copy(), self.observable_hand.copy())
+        return GameState(
+            self.blind_chips,
+            self.scored_chips,
+            self.hand_actions,
+            self.discard_actions,
+            self.deck.copy(),
+            self.observable_hand.copy(),
+        )
 
     def update_score(self, new_score: int) -> GameState:
-        return GameState(self.blind_chips, new_score, self.hand_actions, self.discard_actions,
-                         self.deck.copy(), self.observable_hand.copy())
+        return GameState(
+            self.blind_chips,
+            new_score,
+            self.hand_actions,
+            self.discard_actions,
+            self.deck.copy(),
+            self.observable_hand.copy(),
+        )
 
     def update_observable_hand(self, new_observable_hand: list[Card]) -> GameState:
-        return GameState(self.blind_chips, self.scored_chips, self.hand_actions, self.discard_actions,
-                         self.deck.copy(), new_observable_hand.copy())
+        return GameState(
+            self.blind_chips,
+            self.scored_chips,
+            self.hand_actions,
+            self.discard_actions,
+            self.deck.copy(),
+            new_observable_hand.copy(),
+        )
 
     def update_actions_remaining(self, action_type_taken: ActionType) -> GameState:
         match action_type_taken.value:
             case ActionType.HAND.value:
-                return GameState(self.blind_chips, self.scored_chips, self.hand_actions - 1, self.discard_actions,
-                                 self.deck.copy(), self.observable_hand.copy())
+                return GameState(
+                    self.blind_chips,
+                    self.scored_chips,
+                    self.hand_actions - 1,
+                    self.discard_actions,
+                    self.deck.copy(),
+                    self.observable_hand.copy(),
+                )
 
             case ActionType.DISCARD.value:
-                return GameState(self.blind_chips, self.scored_chips, self.hand_actions, self.discard_actions - 1,
-                                 self.deck.copy(), self.observable_hand.copy())
+                return GameState(
+                    self.blind_chips,
+                    self.scored_chips,
+                    self.hand_actions,
+                    self.discard_actions - 1,
+                    self.deck.copy(),
+                    self.observable_hand.copy(),
+                )
 
 
 # Creates the card Deck, represented as a pre-shuffled OrderedSet of Cards
@@ -91,5 +142,10 @@ def _draw_cards(deck: OrderedSet[Card], n: int) -> list[Card]:
 
 
 INITIAL_DECK = generate_deck()
-INITIAL_GAME_STATE = GameState(blind_chips=SMALL_BLIND_CHIPS, scored_chips=0, hand_actions=HAND_ACTIONS,
-                               discard_actions=DISCARD_ACTIONS, deck=INITIAL_DECK)
+INITIAL_GAME_STATE = GameState(
+    blind_chips=SMALL_BLIND_CHIPS,
+    scored_chips=0,
+    hand_actions=HAND_ACTIONS,
+    discard_actions=DISCARD_ACTIONS,
+    deck=INITIAL_DECK,
+)

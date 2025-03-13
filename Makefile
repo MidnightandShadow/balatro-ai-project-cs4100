@@ -2,8 +2,11 @@
 # entrypoints
 ENTRYPOINT=entrypoints/main.py
 PYTHON=./env/bin/python3
+ACTIVATE=source env/bin/activate
 
 all: env
+
+.PHONY: run format clean
 
 env: requirements.txt
 	python3.11 -m venv env \
@@ -13,6 +16,9 @@ env: requirements.txt
 
 run:
 	${PYTHON} ${ENTRYPOINT}
+
+format:
+	${ACTIVATE} && black .
 
 clean:
 	rm -rf env

@@ -15,7 +15,9 @@ class ObserverManager:
         for observer in self.observers:
             observer.notify_state(observable_state)
 
-    def notify_observers_turn(self, observable_state: ObservableState, action: Action, scored_hand: ScoredHand):
+    def notify_observers_turn(
+        self, observable_state: ObservableState, action: Action, scored_hand: ScoredHand
+    ):
         for observer in self.observers:
             observer.notify_turn(observable_state, action, scored_hand)
 
