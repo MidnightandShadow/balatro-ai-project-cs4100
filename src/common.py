@@ -56,9 +56,12 @@ class Card:
     # Returns the score (i.e. chips) for a Card based purely on its Rank
     # Relies on the punning between Rank value and score value for numbered cards
     def score(self):
-        if self.rank.value < 11: return self.rank.value
-        if self.rank in [Rank.JACK, Rank.QUEEN, Rank.KING]: return 10
-        if self.rank is Rank.ACE: return 11
+        if self.rank.value < 11:
+            return self.rank.value
+        if self.rank in [Rank.JACK, Rank.QUEEN, Rank.KING]:
+            return 10
+        if self.rank is Rank.ACE:
+            return 11
 
 
 class PokerHand(Enum):
@@ -77,15 +80,18 @@ class PokerHand(Enum):
 # the table is a mapping of PokerHands to pairs of (base chips, chip multiplier)
 class ScoringTable:
     _scoring_table: MappingProxyType[PokerHand, tuple[int, int]] = MappingProxyType(
-        {PokerHand.HIGH_CARD: (5, 1),
-         PokerHand.PAIR: (10, 2),
-         PokerHand.TWO_PAIR: (20, 2),
-         PokerHand.THREE_OF_A_KIND: (30, 3),
-         PokerHand.STRAIGHT: (30, 4),
-         PokerHand.FLUSH: (35, 4),
-         PokerHand.FULL_HOUSE: (40, 4),
-         PokerHand.FOUR_OF_A_KIND: (60, 7),
-         PokerHand.STRAIGHT_FLUSH: (100, 8)})
+        {
+            PokerHand.HIGH_CARD: (5, 1),
+            PokerHand.PAIR: (10, 2),
+            PokerHand.TWO_PAIR: (20, 2),
+            PokerHand.THREE_OF_A_KIND: (30, 3),
+            PokerHand.STRAIGHT: (30, 4),
+            PokerHand.FLUSH: (35, 4),
+            PokerHand.FULL_HOUSE: (40, 4),
+            PokerHand.FOUR_OF_A_KIND: (60, 7),
+            PokerHand.STRAIGHT_FLUSH: (100, 8),
+        }
+    )
 
     @classmethod
     def get_chips(cls, poker_hand: PokerHand):
@@ -118,7 +124,12 @@ class Action:
 # The cards of the potential played hand that are scored (i.e. part of the Poker Hand)
 # The cards of the potential played hand that are not scored (i.e. not part of the Poker Hand)
 class ScoredHand:
-    def __init__(self, poker_hand: PokerHand, scored_cards: list[Card], unscored_cards: list[Card]):
+    def __init__(
+        self,
+        poker_hand: PokerHand,
+        scored_cards: list[Card],
+        unscored_cards: list[Card],
+    ):
         self.poker_hand = poker_hand
         self.scored_cards = scored_cards
         self.unscored_cards = unscored_cards
@@ -126,9 +137,11 @@ class ScoredHand:
     def __eq__(self, other):
         if not isinstance(other, ScoredHand):
             return False
-        return self.poker_hand == other.poker_hand and \
-            self.scored_cards == other.scored_cards and \
-            self.unscored_cards == other.unscored_cards
+        return (
+            self.poker_hand == other.poker_hand
+            and self.scored_cards == other.scored_cards
+            and self.unscored_cards == other.unscored_cards
+        )
 
     def __hash__(self):
         return hash((self.poker_hand, self.scored_cards, self.unscored_cards))
@@ -156,34 +169,62 @@ class InvariantViolatedException(Exception):
 def hand_to_scored_hand(played_hand: list[Card]) -> ScoredHand:
     is_straight, is_flush = _is_straight(played_hand), _is_flush(played_hand)
 
-    if is_straight and is_flush: return ScoredHand(PokerHand.STRAIGHT_FLUSH, played_hand, [])
-    if is_flush: return ScoredHand(PokerHand.FLUSH, played_hand, [])
-    if is_straight: return ScoredHand(PokerHand.STRAIGHT, played_hand, [])
+    if is_straight and is_flush:
+        return ScoredHand(PokerHand.STRAIGHT_FLUSH, played_hand, [])
+    if is_flush:
+        return ScoredHand(PokerHand.FLUSH, played_hand, [])
+    if is_straight:
+        return ScoredHand(PokerHand.STRAIGHT, played_hand, [])
 
-    most_populated_rank, second_most_populated_rank, third_most_populated_rank, fourth_most_populated_rank = \
-        group_cards_by_attribute_and_get_four_longest_sublists_if_present(played_hand, CardAttribute.RANK)
+    (
+        most_populated_rank,
+        second_most_populated_rank,
+        third_most_populated_rank,
+        fourth_most_populated_rank,
+    ) = group_cards_by_attribute_and_get_four_longest_sublists_if_present(
+        played_hand, CardAttribute.RANK
+    )
 
     if len(most_populated_rank) == 3 and len(second_most_populated_rank) == 2:
-        return ScoredHand(PokerHand.FULL_HOUSE, most_populated_rank + second_most_populated_rank, [])
+        return ScoredHand(
+            PokerHand.FULL_HOUSE, most_populated_rank + second_most_populated_rank, []
+        )
 
     if len(most_populated_rank) == 4:
-        return ScoredHand(PokerHand.FOUR_OF_A_KIND, most_populated_rank, second_most_populated_rank)
+        return ScoredHand(
+            PokerHand.FOUR_OF_A_KIND, most_populated_rank, second_most_populated_rank
+        )
 
     if len(most_populated_rank) == 2 and len(second_most_populated_rank) == 2:
-        return ScoredHand(PokerHand.TWO_PAIR, most_populated_rank + second_most_populated_rank, third_most_populated_rank)
+        return ScoredHand(
+            PokerHand.TWO_PAIR,
+            most_populated_rank + second_most_populated_rank,
+            third_most_populated_rank,
+        )
 
     if len(most_populated_rank) == 3:
-        return ScoredHand(PokerHand.THREE_OF_A_KIND, most_populated_rank, second_most_populated_rank + third_most_populated_rank)
+        return ScoredHand(
+            PokerHand.THREE_OF_A_KIND,
+            most_populated_rank,
+            second_most_populated_rank + third_most_populated_rank,
+        )
 
     if len(most_populated_rank) == 2:
-        return ScoredHand(PokerHand.PAIR, most_populated_rank, second_most_populated_rank + third_most_populated_rank + fourth_most_populated_rank)
+        return ScoredHand(
+            PokerHand.PAIR,
+            most_populated_rank,
+            second_most_populated_rank
+            + third_most_populated_rank
+            + fourth_most_populated_rank,
+        )
 
     high_card, other_cards = high_card_and_unscored(played_hand)
     return ScoredHand(PokerHand.HIGH_CARD, [high_card], other_cards)
 
 
 def _is_straight(played_hand: list[Card]) -> bool:
-    if len(played_hand) != 5: return False
+    if len(played_hand) != 5:
+        return False
 
     rank_descending_hand = cards_by_rank_descending(played_hand)
     ranks: list[Suit] = list(map(lambda card: card.rank, rank_descending_hand))
@@ -195,7 +236,8 @@ def _is_straight(played_hand: list[Card]) -> bool:
 
 
 def _is_flush(played_hand: list[Card]) -> bool:
-    if len(played_hand) != 5: return False
+    if len(played_hand) != 5:
+        return False
 
     suits: list[Suit] = list(map(lambda card: card.suit, played_hand))
     return all(x == suits[0] for x in suits)
@@ -220,27 +262,46 @@ def cards_by_rank_descending(cards: list[Card]) -> list[Card]:
 # Grouping by Suit, the cards
 # "Ten of Spades, Ten of Diamonds, Ten of Hearts, Ten of Clubs, Two of Spades, Six of Clubs" would return:
 # [[Ten of Spades, Two of Spades], [Ten of Clubs, Six of Clubs], [Ten of Diamonds], [Ten of Hearts]].
-def group_cards_by_attribute(played_hand: list[Card], group_by: CardAttribute) -> list[list[Card]]:
+def group_cards_by_attribute(
+    played_hand: list[Card], group_by: CardAttribute
+) -> list[list[Card]]:
     result: list[list[Card]] = []
     match group_by.value:
         case CardAttribute.RANK.value:
             for rank in Rank:
-                result.append(list(filter(lambda card: card.rank.value == rank.value, played_hand)))
+                result.append(
+                    list(
+                        filter(lambda card: card.rank.value == rank.value, played_hand)
+                    )
+                )
 
         case CardAttribute.SUIT.value:
             for suit in Suit:
-                result.append(list(filter(lambda card: card.suit.value == suit.value, played_hand)))
+                result.append(
+                    list(
+                        filter(lambda card: card.suit.value == suit.value, played_hand)
+                    )
+                )
 
-    result_filtered_to_present_cards = list(filter(lambda card_list: len(card_list) > 0, result))
-    return sorted(result_filtered_to_present_cards, key=lambda card_list: len(card_list), reverse=True)
+    result_filtered_to_present_cards = list(
+        filter(lambda card_list: len(card_list) > 0, result)
+    )
+    return sorted(
+        result_filtered_to_present_cards,
+        key=lambda card_list: len(card_list),
+        reverse=True,
+    )
 
 
 # Returns a tuple of the four longest sublists from group_cards_by_attribute() in decreasing order by length.
 # If the nth-longest sublist is not present, returns the empty list for that sublist.
-def group_cards_by_attribute_and_get_four_longest_sublists_if_present(played_hand: list[Card], group_by: CardAttribute) \
-        -> tuple[list[Card], list[Card], list[Card], list[Card]]:
+def group_cards_by_attribute_and_get_four_longest_sublists_if_present(
+    played_hand: list[Card], group_by: CardAttribute
+) -> tuple[list[Card], list[Card], list[Card], list[Card]]:
     grouped_cards = group_cards_by_attribute(played_hand, group_by)
-    return (grouped_cards[0],
-            grouped_cards[1] if len(grouped_cards) >= 2 else [],
-            grouped_cards[2] if len(grouped_cards) >= 3 else [],
-            grouped_cards[3] if len(grouped_cards) >= 4 else [])
+    return (
+        grouped_cards[0],
+        grouped_cards[1] if len(grouped_cards) >= 2 else [],
+        grouped_cards[2] if len(grouped_cards) >= 3 else [],
+        grouped_cards[3] if len(grouped_cards) >= 4 else [],
+    )
