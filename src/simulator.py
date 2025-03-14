@@ -1,20 +1,29 @@
+"""
+This file contains the "Referee" of the game as a function "simulate_game()".
+
+Given some initial GameState, a Player (agent to play the game), and an ObserverManager 
+(to notify of game updates), it will simulate a game to completion roughly as according
+to the Balatro rules listed in description.md.
+
+NOTE: The current implementation partially deviates from the rules of Balatro, but not
+      in any way that affects the semantics for the first ante of the game (excluding 
+      boss modifiers and shops).
+"""
+
 from src.common import Action, ActionType, hand_to_scored_hand
 from src.game_state import GameState
 from src.observer_manager import ObserverManager
 from src.player import Player
 
-# This file contains the "Referee" of the game as a function "simulate_game()".
-# Given some initial GameState, a Player (agent to play the game), and an ObserverManager (to notify of game updates),
-# it will simulate a game to completion roughly as according to the Balatro rules listed in description.md.
-# NOTE: the current implementation partially deviates from the rules of Balatro, but not in any way that
-#       affects the semantics for the first ante of the game (excluding boss modifiers and shops).
 
-
-# Simulates a game to completion
-# INVARIANT: the first cards for the player's observable hand have already been drawn from the deck and dealt
 def simulate_game(
     initial_state: GameState, player: Player, observer_manager: ObserverManager
 ):
+    """
+    Simulates a game to completion
+    INVARIANT: the first cards for the player's observable hand have already been 
+    drawn from the deck and dealt
+    """
     current_state = initial_state.copy()
     observer_manager.notify_observers_state(
         current_state.game_state_to_observable_state()
@@ -31,11 +40,15 @@ def simulate_game(
     return player_won
 
 
-# Simulates a single turn by applying the action to transform the state according to the game rules in description.md
-# NOTE: Does not include terminal-state checking
 def _simulate_turn(
     state: GameState, action: Action, observer_manager: ObserverManager
 ) -> GameState:
+    """
+    Simulates a single turn by applying the action to transform the state according to
+    the game rules in description.md
+
+    NOTE: Does not include terminal-state checking
+    """
     _validate_action(state, action)
     new_score = state.scored_chips
 
@@ -60,17 +73,22 @@ class IllegalActionException(Exception):
         super().__init__("ILLEGAL ACTION")
 
 
-# Raises an IllegalActionException if given an action that is illegal with respect to the state
 def _validate_action(state: GameState, action: Action) -> None:
+    """
+    Raises an IllegalActionException if given an action that is illegal with respect
+    to the state
+    """
     if not _is_legal_action(state, action):
         raise IllegalActionException
 
 
-# An action is legal only when:
-# 1. There are enough Hands or Discards left to accommodate the ActionType
-# 2. The cards chosen are present in the state's observable_hand
-# 3. The cards chosen are between length 1 - 5 (inclusive)
 def _is_legal_action(state: GameState, action: Action) -> bool:
+    """
+    An action is legal only when:
+        1. There are enough Hands or Discards left to accommodate the ActionType
+        2. The cards chosen are present in the state's observable_hand
+        3. The cards chosen are between length 1 - 5 (inclusive)
+    """
     enough_action_types_left = (
         state.hand_actions > 0
         if action.action_type == ActionType.HAND

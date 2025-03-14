@@ -2,8 +2,11 @@ from typing import Set
 from src.common import *
 
 
-# Represents the state of Balatro that is observable by the player agent (see: description.md)
 class ObservableState:
+    """
+    Represents the state of Balatro that is observable by the player agent 
+    (see: description.md)
+    """
     def __init__(
         self,
         blind_chips: int,

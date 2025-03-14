@@ -1,12 +1,16 @@
+""" 
+
+This file contains data representations and functions common to both the GameState
+(and corresponding simulator) as well as the Player (and corresponding Strategy).
+This has not been added to the GameState directly to avoid exposing the GameState
+to the Player.
+
+"""
+
 from __future__ import annotations
 
 from enum import Enum
 from types import MappingProxyType
-
-
-# This file contains data representations and functions common to both the GameState (and corresponding simulator)
-# as well as the Player (and corresponding Strategy).
-# This has not been added to the GameState directly to avoid exposing the GameState to the Player.
 
 
 class Suit(Enum):
@@ -53,15 +57,18 @@ class Card:
     def __repr__(self):
         return f"<{self.rank.name} of {self.suit.name}>"
 
-    # Returns the score (i.e. chips) for a Card based purely on its Rank
-    # Relies on the punning between Rank value and score value for numbered cards
-    def score(self):
+    def score(self) -> int:
+        """
+        Returns the score (i.e. chips) for a Card based purely on its Rank.
+        Relies on the punning between Rank value and score value for numbered cards.
+        """
         if self.rank.value < 11:
             return self.rank.value
         if self.rank in [Rank.JACK, Rank.QUEEN, Rank.KING]:
             return 10
         if self.rank is Rank.ACE:
             return 11
+        raise NotImplementedError("Invalid rank value")
 
 
 class PokerHand(Enum):
@@ -76,9 +83,11 @@ class PokerHand(Enum):
     STRAIGHT_FLUSH = 9
 
 
-# Represents the scoring table for Poker Hands
-# the table is a mapping of PokerHands to pairs of (base chips, chip multiplier)
 class ScoringTable:
+    """
+    Represents the scoring table for Poker Hands the table is a mapping of PokerHands to
+    pairs of (base chips, chip multiplier)
+    """
     _scoring_table: MappingProxyType[PokerHand, tuple[int, int]] = MappingProxyType(
         {
             PokerHand.HIGH_CARD: (5, 1),
@@ -95,11 +104,11 @@ class ScoringTable:
 
     @classmethod
     def get_chips(cls, poker_hand: PokerHand):
-        return cls._scoring_table.get(poker_hand)[0]
+        return cls._scoring_table[poker_hand][0]
 
     @classmethod
     def get_mult(cls, poker_hand: PokerHand):
-        return cls._scoring_table.get(poker_hand)[1]
+        return cls._scoring_table[poker_hand][1]
 
 
 class ActionType(Enum):
@@ -118,12 +127,17 @@ class Action:
     def copy(self) -> Action:
         return Action(self.action_type, self.played_hand.copy())
 
-
-# Represents a potential hand of 1-5 cards to be scored through:
-# The corresponding matched Poker Hand
-# The cards of the potential played hand that are scored (i.e. part of the Poker Hand)
-# The cards of the potential played hand that are not scored (i.e. not part of the Poker Hand)
 class ScoredHand:
+    """
+
+    Represents a potential hand of 1-5 cards to be scored through:
+        1. The corresponding matched Poker Hand
+        2. The cards of the potential played hand that are scored (i.e. part of the
+           Poker Hand)
+        3. The cards of the potential played hand that are not scored (i.e. not part
+           of the Poker Hand)
+
+    """
     def __init__(
         self,
         poker_hand: PokerHand,
@@ -147,7 +161,8 @@ class ScoredHand:
         return hash((self.poker_hand, self.scored_cards, self.unscored_cards))
 
     def __repr__(self):
-        return f"[Hand: {self.poker_hand}; Scored Cards: {self.scored_cards}; Unscored Cards: {self.unscored_cards}]"
+        return f"[Hand: {self.poker_hand}; Scored Cards: {self.scored_cards}; "\
+              + "Unscored Cards: {self.unscored_cards}]"
 
     def score(self) -> int:
         card_score_sum = sum(list(map(lambda card: card.score(), self.scored_cards)))
@@ -161,11 +176,21 @@ class InvariantViolatedException(Exception):
         super().__init__(f"INVARIANT VIOLATED: {message}")
 
 
-# Returns a ScoredHand corresponding to the given played_hand as per the rules in description.md
-# Matches are made in decreasing order of required number of cards in the hand (e.g. full-house before four-of-a-kind).
-# The x-pair and x-of-a-kind checks rely on group_cards_by_attribute_and_get_four_longest_sublists_if_present()
-# and the invariants it establishes when grouping cards by rank in descending order.
-# INVARIANT: played_hand is of length 1 - 5
+"""
+
+Returns a ScoredHand corresponding to the given played_hand as per the rules in
+description.md
+
+Matches are made in decreasing order of required number of cards in the hand
+(e.g. full-house before four-of-a-kind).
+
+The x-pair and x-of-a-kind checks rely on 
+group_cards_by_attribute_and_get_four_longest_sublists_if_present() and the invariants
+it establishes when grouping cards by rank in descending order.
+
+INVARIANT: played_hand is of length 1 - 5
+
+"""
 def hand_to_scored_hand(played_hand: list[Card]) -> ScoredHand:
     is_straight, is_flush = _is_straight(played_hand), _is_flush(played_hand)
 
@@ -227,7 +252,7 @@ def _is_straight(played_hand: list[Card]) -> bool:
         return False
 
     rank_descending_hand = cards_by_rank_descending(played_hand)
-    ranks: list[Suit] = list(map(lambda card: card.rank, rank_descending_hand))
+    ranks: list[Rank] = list(map(lambda card: card.rank, rank_descending_hand))
 
     for i in range(len(ranks) - 1):
         if ranks[i].value - ranks[i + 1].value != 1:
@@ -243,8 +268,10 @@ def _is_flush(played_hand: list[Card]) -> bool:
     return all(x == suits[0] for x in suits)
 
 
-# Returns (highest rank card in played_hand, list of the other cards in played_hand)
 def high_card_and_unscored(played_hand: list[Card]) -> tuple[Card, list[Card]]:
+    """
+    Returns the highest rank card in played_hand, list of the other cards in played_hand
+    """
     rank_descending_hand = cards_by_rank_descending(played_hand)
     return rank_descending_hand[0], rank_descending_hand[1:]
 
@@ -253,15 +280,26 @@ def cards_by_rank_descending(cards: list[Card]) -> list[Card]:
     return sorted(cards, key=lambda card: card.rank.value, reverse=True)
 
 
-# Given a list of cards, returns a list of sublists of cards, where:
-# the sublists are the lists of cards in the hand that match to a particular card attribute (e.g. rank or suit).
-# The result is in descending order by length of the sublists.
-# Examples for intuition:
-# Grouping by Rank, the cards "Ten of Spades, Ten of Diamonds, Ten of Hearts, Ten of Clubs, Two of Spades" would return:
-# [[Ten of Spades, Ten of Diamonds, Ten of Hearts, Ten of Clubs], [Two of Spades]].
-# Grouping by Suit, the cards
-# "Ten of Spades, Ten of Diamonds, Ten of Hearts, Ten of Clubs, Two of Spades, Six of Clubs" would return:
-# [[Ten of Spades, Two of Spades], [Ten of Clubs, Six of Clubs], [Ten of Diamonds], [Ten of Hearts]].
+"""
+
+Given a list of cards, returns a list of sublists of cards, where:
+
+  - the sublists are the lists of cards in the hand that match to a particular card
+    attribute (e.g. rank or suit).
+  - The result is in descending order by length of the sublists.
+    Examples for intuition:
+      - Grouping by Rank, the cards "Ten of Spades, Ten of Diamonds, Ten of Hearts, 
+        Ten of Clubs, Two of Spades" would return:
+        [[Ten of Spades, Ten of Diamonds, Ten of Hearts, Ten of Clubs],
+         [Two of Spades]].
+      - Grouping by Suit, the cards "Ten of Spades, Ten of Diamonds, Ten of Hearts,
+        Ten of Clubs, Two of Spades, Six of Clubs" would return:
+        [[Ten of Spades, Two of Spades], 
+         [Ten of Clubs, Six of Clubs], 
+         [Ten of Diamonds], 
+         [Ten of Hearts]]
+
+"""
 def group_cards_by_attribute(
     played_hand: list[Card], group_by: CardAttribute
 ) -> list[list[Card]]:
@@ -293,11 +331,15 @@ def group_cards_by_attribute(
     )
 
 
-# Returns a tuple of the four longest sublists from group_cards_by_attribute() in decreasing order by length.
-# If the nth-longest sublist is not present, returns the empty list for that sublist.
 def group_cards_by_attribute_and_get_four_longest_sublists_if_present(
     played_hand: list[Card], group_by: CardAttribute
 ) -> tuple[list[Card], list[Card], list[Card], list[Card]]:
+    """
+    Returns a tuple of the four longest sublists from group_cards_by_attribute() in 
+    decreasing order by length.
+
+    If the nth-longest sublist is not present, returns the empty list for that sublist.
+    """
     grouped_cards = group_cards_by_attribute(played_hand, group_by)
     return (
         grouped_cards[0],
