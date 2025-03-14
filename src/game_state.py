@@ -61,7 +61,7 @@ class GameState:
             self.scored_chips,
             self.hand_actions,
             self.discard_actions,
-            len(self.deck),
+            set(self.deck),
             self.observable_hand,
         )
 

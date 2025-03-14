@@ -13,7 +13,7 @@ def render_text_view_state(state: ObservableState) -> None:
     hand_actions_label = f"Hands: {state.hand_actions}"
     discard_actions_label = f"Discards: {state.discard_actions}"
     num_cards_left_in_deck_label = (
-        f"# of cards left in deck: {state.num_cards_left_in_deck}"
+        f"cards left in deck: {state.cards_left_in_deck}"
     )
     observable_hand_label = f"Observable hand: {state.observable_hand}"
     print(
