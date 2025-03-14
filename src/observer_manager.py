@@ -3,8 +3,11 @@ from src.observable_state import ObservableState
 from src.observer import Observer
 
 
-# An ObserverManager maintains a list of Observers to notify whenever the manager receives any game-related updates.
 class ObserverManager:
+    """
+    An ObserverManager maintains a list of Observers to notify whenever the manager
+    receives any game-related updates.
+    """
     def __init__(self):
         self.observers: list[Observer] = []
 

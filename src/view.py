@@ -1,10 +1,13 @@
+"""
+This file contains "View" functions that take in an ObservableState (and/or other 
+relevant data) to render helpful game info in some form.
+"""
+
 from src.common import Action, ScoredHand, ActionType
 from src.constants import *
 from src.observable_state import ObservableState
 
 
-# This file contains "View" functions that take in an ObservableState (and/or other relevant data)
-# to render helpful game info in some form.
 
 
 def render_text_view_state(state: ObservableState) -> None:
@@ -27,14 +30,18 @@ def render_text_view_state(state: ObservableState) -> None:
     )
 
 
-# Renders the state as above, but first renders the action the player took to transition to that state,
-# as well as the relevant ScoredHand info.
-# NOTE: either this function shouldn't take in the ScoredHand, or the representation of ScoredHand
-#       should change to PlayedHand (to accommodate Discard action hand representations).
-#       For now, it only displays ScoredHand info if the action is Hand.
 def render_text_view_turn(
     state: ObservableState, action: Action, scored_hand: ScoredHand
 ) -> None:
+    """
+    Renders the state as above, but first renders the action the player took to 
+    transition to that state, as well as the relevant ScoredHand info.
+
+    NOTE: Either this function shouldn't take in the ScoredHand, or the representation
+          of ScoredHand should change to PlayedHand (to accommodate Discard action hand
+          representations). For now, it only displays ScoredHand info if the action is
+          Hand.
+    """
     print(TEXT_DASH_SEPARATOR)
     print(f"The action you took:\n{action}")
 

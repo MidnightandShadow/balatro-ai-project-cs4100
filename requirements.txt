@@ -1,3 +1,4 @@
 ordered_set
 black
 pylint
+pytest

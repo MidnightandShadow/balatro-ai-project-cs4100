@@ -14,9 +14,12 @@ from src.constants import (
 from src.observable_state import ObservableState
 
 
-# Represents a complete state of Balatro as according to description.md
 class GameState:
-    # INVARIANT: If you want the deck to be shuffled, it is the caller's responsibility to pre-shuffle it
+    """
+    Represents a complete state of Balatro as according to description.md
+    INVARIANT: If you want the deck to be shuffled, it is the caller's responsibility
+               to pre-shuffle it
+    """
     def __init__(
         self,
         blind_chips: int,
@@ -24,7 +27,7 @@ class GameState:
         hand_actions: int,
         discard_actions: int,
         deck: OrderedSet[Card],
-        observable_hand: list[Card] = None,
+        observable_hand: list[Card] | None = None,
     ):
         self.blind_chips = blind_chips
         self.scored_chips = scored_chips
@@ -36,10 +39,13 @@ class GameState:
         else:
             self.observable_hand = observable_hand
 
-    # Returns a new GameState with the played_cards removed from the current observable_hand and replaced
-    # by an equal number of cards from the deck.
-    # INVARIANT: there will always be enough cards in the deck to draw n cards, given the rules of the game.
     def replace_played_cards(self, played_cards: list[Card]) -> GameState:
+        """
+        Returns a new GameState with the played_cards removed from the current
+        observable_hand and replaced by an equal number of cards from the deck.
+        INVARIANT: there will always be enough cards in the deck to draw n cards, given
+                   the rules of the game.
+        """ 
         replacement_cards = _draw_cards(self.deck, len(played_cards))
         new_hand = (
             list(filter(lambda card: card not in played_cards, self.observable_hand))
@@ -47,12 +53,15 @@ class GameState:
         )
         return self.update_observable_hand(new_hand)
 
-    # The game is over when scored_chips >= blind_chips or hand_actions = 0
     def is_game_over(self) -> bool:
+        """The game is over when scored_chips >= blind_chips or hand_actions = 0"""
         return self.scored_chips >= self.blind_chips or self.hand_actions == 0
 
-    # The player wins when the game is over, and they've scored at least the required number of chips
     def did_player_win(self) -> bool:
+        """
+        The player wins when the game is over, and they've scored at least the 
+        required number of chips
+        """
         return self.is_game_over() and self.scored_chips >= self.blind_chips
 
     def game_state_to_observable_state(self) -> ObservableState:
@@ -118,9 +127,11 @@ class GameState:
                 )
 
 
-# Creates the card Deck, represented as a pre-shuffled OrderedSet of Cards
-# The deck uses the typical 52 playing cards (based on 13 ranks and 4 suits)
 def generate_deck() -> OrderedSet[Card]:
+    """
+    Creates the card Deck, represented as a pre-shuffled OrderedSet of Cards
+    The deck uses the typical 52 playing cards (based on 13 ranks and 4 suits)
+    """
     initial_card_list = []
     for suit in Suit:
         for rank in Rank:
@@ -131,11 +142,13 @@ def generate_deck() -> OrderedSet[Card]:
     return OrderedSet(initial_card_list)
 
 
-# Draws n cards from the front of the given deck and returns them as a list of Cards
-# EFFECT: mutates deck by removing the cards drawn
 def _draw_cards(deck: OrderedSet[Card], n: int) -> list[Card]:
+    """
+    Draws n cards from the front of the given deck and returns them as a list of Cards
+    EFFECT: mutates deck by removing the cards drawn
+    """
     result_cards_list = []
-    for i in range(n):
+    for _ in range(n):
         result_cards_list.append(deck.pop(0))
 
     return result_cards_list

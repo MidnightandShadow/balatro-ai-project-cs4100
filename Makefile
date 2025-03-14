@@ -1,21 +1,22 @@
-# TODO: we should have a entrypoint/ folder outside of src for all of our 
-# entrypoints
-ENTRYPOINT=entrypoints/main.py
-PYTHON=./env/bin/python3
-ACTIVATE=source env/bin/activate
+# TODO: we should have a entrypoint/ folder outside of src for all of our entrypoints
+ENTRYPOINT:=entrypoints/main.py
+ACTIVATE:=source env/bin/activate
 
 all: env
 
-.PHONY: run format clean
+.PHONY: run format clean all test
 
 env: requirements.txt
-	python3.11 -m venv env \
+	python3 -m venv env \
 		&& source env/bin/activate \
 		&& pip3 install --upgrade pip \
 		&& pip3 install -r requirements.txt
 
 run:
-	${PYTHON} ${ENTRYPOINT}
+	${ACTIVATE} && python3 ${ENTRYPOINT}
+
+test:
+	${ACTIVATE} && pytest .
 
 format:
 	${ACTIVATE} && black .

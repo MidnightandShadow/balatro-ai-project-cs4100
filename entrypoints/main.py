@@ -1,5 +1,5 @@
+# Not sure how to get rid of this... lmk if someone finds a workaround
 import sys
-
 sys.path.extend([".", "./src"])
 
 from src.referee import *

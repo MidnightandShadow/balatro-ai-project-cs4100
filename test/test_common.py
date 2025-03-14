@@ -1,10 +1,8 @@
-import pytest
-from _pytest.outcomes import fail
+from unittest import TestCase
 
 from src.common import *
 
-
-class TestCommon:
+class TestCommon(TestCase):
     ace_of_spades = Card(Rank.ACE, Suit.SPADES)
     ace_of_clubs = Card(Rank.ACE, Suit.CLUBS)
     king_of_clubs = Card(Rank.KING, Suit.CLUBS)

@@ -1,3 +1,8 @@
+"""
+This file contains top-level scripts to run games with strategies (and observe as 
+desired).
+"""
+
 from src.constants import *
 from src.game_state import INITIAL_GAME_STATE, GameState, generate_deck
 from src.observer import *
@@ -6,7 +11,6 @@ from src.player import Player
 from src.simulator import simulate_game
 from src.strategy import *
 
-# This file contains top-level scripts to run games with strategies (and observe as desired).
 
 
 def play_a_single_default_game_with_a_single_strategy_and_observe_it(

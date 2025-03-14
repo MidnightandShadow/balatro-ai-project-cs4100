@@ -3,8 +3,11 @@ from src.observable_state import ObservableState
 from src.strategy import Strategy
 
 
-# Represents a Player (agent) of the game that has a single Strategy it defers to for taking actions.
 class Player:
+    """
+    Represents a Player (agent) of the game that has a single Strategy it defers to for
+    taking actions.
+    """
     def __init__(self, strategy: Strategy):
         self.strategy = strategy
 
