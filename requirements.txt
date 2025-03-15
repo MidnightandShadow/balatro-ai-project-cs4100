@@ -1,4 +1,5 @@
 ordered_set
+gymnasium
 black
 pylint
 pytest
