@@ -154,3 +154,17 @@ What would let you win this small blind ante of 300 chips in a single hand (assu
 - Pair              (IMPOSSIBLE: scored cards would need to be worth at least 140 chips, most you could get is 22 chips from 2 aces)
 
 - High Card       (IMPOSSIBLE: scored card would need to be worth at least 295 chips, most you could get is 11 chips from 1 ace)
+---
+Action space:
+
+Assume you have 8 cards in your observable hand and can play any combination of 1 to 5 of the cards.
+Further, you can play them for 2 kinds of action types: a hand action or a discard action.
+
+That's 2 · (<sup>8</sup>C<sub>5</sub> + <sup>8</sup>C<sub>4</sub> + <sup>8</sup>C<sub>3</sub> + <sup>8</sup>C<sub>2</sub> + <sup>8</sup>C<sub>1</sub>
+) actions = 2 · (56 + 70 + 56 + 28 + 8) actions = 436 actions
+
+Once the player exhausts their remaining discard actions, the legal actions are limited to 436/2 = 218 legal actions.
+
+Once the player exhausts their remaining hand actions, the player has reached a terminal state.
+
+Note: in the full Balatro game, we'd have way more actions for several reasons, but mainly because we'd have to use permutations instead of combinations. Once you encounter cards with chip multiplier effects and jokers, the enforcement of left-to-right card order matters. However, this ordering has no effect on the first ante of the game, as cards can only add chips.
