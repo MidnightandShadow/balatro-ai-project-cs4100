@@ -27,8 +27,8 @@ class BalatroEnv(gym.Env):
             {
                 "blind_chips": gym.spaces.Box(0, float("inf"), dtype=int),
                 "scored_chips": gym.spaces.Box(0, float("inf"), dtype=int),
-                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS, start=1),
-                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS, start=1),
+                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS),
+                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS),
                 "cards_left_in_deck": gym.spaces.Sequence(gym.spaces.Discrete(52)),
                 "observable_hand": gym.spaces.Sequence(gym.spaces.Discrete(52)),
             }
