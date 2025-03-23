@@ -1,12 +1,12 @@
 """
 This file contains the "Referee" of the game as a function "simulate_game()".
 
-Given some initial GameState, a Player (agent to play the game), and an ObserverManager 
+Given some initial GameState, a Player (agent to play the game), and an ObserverManager
 (to notify of game updates), it will simulate a game to completion roughly as according
 to the Balatro rules listed in description.md.
 
 NOTE: The current implementation partially deviates from the rules of Balatro, but not
-      in any way that affects the semantics for the first ante of the game (excluding 
+      in any way that affects the semantics for the first ante of the game (excluding
       boss modifiers and shops).
 """
 
@@ -21,7 +21,7 @@ def simulate_game(
 ):
     """
     Simulates a game to completion
-    INVARIANT: the first cards for the player's observable hand have already been 
+    INVARIANT: the first cards for the player's observable hand have already been
     drawn from the deck and dealt
     """
     current_state = initial_state.copy()
@@ -33,14 +33,14 @@ def simulate_game(
         current_action = player.take_action(
             current_state.game_state_to_observable_state()
         )
-        current_state = _simulate_turn(current_state, current_action, observer_manager)
+        current_state = simulate_turn(current_state, current_action, observer_manager)
 
     player_won = current_state.did_player_win()
     observer_manager.notify_observers_game_over(player_won)
     return player_won
 
 
-def _simulate_turn(
+def simulate_turn(
     state: GameState, action: Action, observer_manager: ObserverManager
 ) -> GameState:
     """

@@ -1,4 +1,3 @@
-# TODO: we should have a entrypoint/ folder outside of src for all of our entrypoints
 ENTRYPOINT:=entrypoints/main.py
 ACTIVATE:=source env/bin/activate
 
