@@ -12,7 +12,7 @@ from src.game_state import GameState, INITIAL_GAME_STATE
 from src.observer_manager import ObserverManager
 from src.simulator import simulate_turn
 
-MAX_CHIPS = 10_000
+MAX_CHIPS = 100_000
 
 class BalatroEnv(gym.Env):
     """
@@ -28,9 +28,9 @@ class BalatroEnv(gym.Env):
 
         self.observation_space = gym.spaces.Dict(
             {
-                "chips_left": gym.spaces.Discrete(MAX_CHIPS),
-                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS),
-                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS),
+                "chips_left": gym.spaces.Box(low=0, high=MAX_CHIPS, dtype=np.int64),
+                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS+1),
+                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS+1),
                 "deck": gym.spaces.MultiBinary(NUM_CARDS),
                 "observable_hand": gym.spaces.OneOf(
                     [
@@ -114,6 +114,8 @@ class BalatroEnv(gym.Env):
 
     @staticmethod
     def rank_combination(n : int, k: int, combination : list[int]) -> int:
+        combination = combination.copy()
+        combination.sort() # remember to sort the combination before ranking
         index = 0
         start = 0  # Smallest number to consider
         for i, c in enumerate(combination):
@@ -126,8 +128,9 @@ class BalatroEnv(gym.Env):
         """
         The obs component returned by env.step() and env.reset().
         """
-        deck = np.array([0] * NUM_CARDS)
-        deck[np.array(self.game_state.deck)] = 1
+        deck = np.array([0] * NUM_CARDS, dtype=np.int8)
+        card_indices = [c.to_int() for c in self.game_state.deck]
+        deck[np.array(card_indices)] = 1
         
         observable_hand = [c.to_int() for c in self.game_state.observable_hand]
         observable_hand_index = self.rank_combination(
@@ -136,14 +139,14 @@ class BalatroEnv(gym.Env):
 
         return {
             "chips_left": np.array(
-                self.game_state.blind_chips - self.game_state.scored_chips
+                [self.game_state.blind_chips - self.game_state.scored_chips]
             ),
-            "hand_actions": np.array(self.game_state.hand_actions),
-            "discard_actions": np.array(self.game_state.discard_actions),
+            "hand_actions": np.int64(self.game_state.hand_actions),
+            "discard_actions": np.int64(self.game_state.discard_actions),
             "deck": deck,
             "observable_hand": (
-                np.array([len(observable_hand)]),
-                np.array([observable_hand_index])
+                np.int64(len(observable_hand)),
+                np.int64(observable_hand_index)
             )
         }
 
@@ -187,7 +190,8 @@ class BalatroEnv(gym.Env):
         action -= 218
         
         k = 1
-        while action < comb(8,k):
+        while action >= comb(8,k):
+            print(action)
             action -= comb(8,k)
             k += 1
 
