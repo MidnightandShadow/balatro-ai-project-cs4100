@@ -70,6 +70,11 @@ class Card:
             return 11
         raise NotImplementedError("Invalid rank value")
 
+    def to_int(self) -> int:
+        # TWO -> 0, THREE -> 1, ... ACE -> 13
+        # TWO SPADES -> 0, ..., ACE DIAMONDS -> 51
+        return len(Rank) * (self.suit.value - 1) + (self.rank.value - 2)
+
 
 class PokerHand(Enum):
     HIGH_CARD = 1

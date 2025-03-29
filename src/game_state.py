@@ -105,8 +105,8 @@ class GameState:
         )
 
     def update_actions_remaining(self, action_type_taken: ActionType) -> GameState:
-        match action_type_taken.value:
-            case ActionType.HAND.value:
+        match action_type_taken:
+            case ActionType.HAND:
                 return GameState(
                     self.blind_chips,
                     self.scored_chips,
@@ -116,7 +116,7 @@ class GameState:
                     self.observable_hand.copy(),
                 )
 
-            case ActionType.DISCARD.value:
+            case ActionType.DISCARD:
                 return GameState(
                     self.blind_chips,
                     self.scored_chips,

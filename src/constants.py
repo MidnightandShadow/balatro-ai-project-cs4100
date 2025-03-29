@@ -6,6 +6,8 @@ except OSError:
     width = 88
 
 # Game constants
+NUM_CARDS = 52
+CARDS_IN_HAND = 5
 SMALL_BLIND_CHIPS = 300
 BIG_BLIND_CHIPS = 450
 BOSS_BLIND_CHIPS = 600
