@@ -1,14 +1,17 @@
+from abc import ABC, abstractmethod
+
 from src.common import Action, ActionType, CardAttribute, group_cards_by_attribute
 from src.observable_state import ObservableState
 
 
-class Strategy:
+class Strategy(ABC):
     """
     Strategy effectively represents the class of functions that take an ObservableState
     and return an Action, which each implementation semantically corresponding to some
     instance of a strategy for playing Balatro.
     """
 
+    @abstractmethod
     def strategize(self, state: ObservableState) -> Action:
         pass
 
