@@ -75,6 +75,18 @@ class Card:
         # TWO SPADES -> 0, ..., ACE DIAMONDS -> 51
         return len(Rank) * (self.suit.value - 1) + (self.rank.value - 2)
 
+    @staticmethod
+    def from_int(i: int) -> Card:
+        return _int_to_card_dict[i]
+
+
+# Represents the mapping from ints to cards
+_int_to_card_dict: dict[int, Card] = {}
+for r in Rank:
+    for s in Suit:
+        card = Card(r, s)
+        _int_to_card_dict[card.to_int()] = card
+
 
 class PokerHand(Enum):
     HIGH_CARD = 1
