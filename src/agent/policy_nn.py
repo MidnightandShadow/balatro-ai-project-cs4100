@@ -8,24 +8,52 @@ import torch.nn.functional as F
 
 import math
 import random
-import matplotlib
-import matplotlib.pyplot as plt
+import numpy as np
 from collections import namedtuple, deque
-from itertools import count
+
+
+DEBUG = False
+
+def dprint(*args, **kwargs):
+    if DEBUG:
+        print("[DEBUG]", *args, **kwargs)
+
 
 class DQN(nn.Module):
-    def __init__(self, obsd, bd, outd):
+    def __init__(self, obsd, outd):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(obsd, bd)
-        self.layer2 = nn.Linear(bd, bd)
-        self.layer3 = nn.Linear(bd, outd)
+        """
+
+        Each node in the first layer should correspond to the various "types of hands"
+        that can be played. 
+        
+        We know there are 436 different kinds of hands that can be played, i.e. 
+        8C1 + 8C2 + 8C3 + 8C4 ... + 8C5, but there are 
+
+        52C1 + 52C2 + 52C3 + 52C4 + 52C5 = 2,893,163 POSSIBLE hands that can be played.
+
+        Then, from those 2 million combinations * 2 for hand / discard action, only 
+        436 of those combinations are legal to play. Furthermore, there's a specific 
+        algorithm that maps the hand from the 4 million possibilities x the current 
+        observable hand (there are 52C8 possible observable hands) down to the specific 
+        action.
+
+        Expecting a model-free NN (ran locally) to fit the weights for the 4M x 700M 
+        mapping to the 436 dimension output action is absurd.
+
+        """
+        N = 52 # for the 52 cards in the deck
+        self.layer1 = nn.Linear(obsd, N)
+        self.layer2 = nn.Linear(N, N)
+        self.layer3 = nn.Linear(N + obsd, outd)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x):
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        return self.layer3(x)
+    def forward(self, x1):
+        x = F.sigmoid(self.layer1(x1))
+        x = F.sigmoid(self.layer2(x))
+        # x is (1,52) at this point.
+        return F.softmax(self.layer3(torch.concat((x1,x), dim=-1)))
 
 Transition = namedtuple(
     'Transition', ('state', 'action', 'next_state', 'reward')
@@ -57,7 +85,7 @@ BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 1000
+EPS_DECAY = 10**4
 TAU = 0.005
 LR = 1e-4
 
@@ -68,8 +96,7 @@ class DQNAgent(Agent):
     ):
         super().__init__(env)
         self.obsd = 107
-        self.actd = 53
-        self.hidd = 200
+        self.actd = 436
 
         # Get number of actions from gym action space
         self.n_actions = self.env.action_space.n
@@ -77,15 +104,30 @@ class DQNAgent(Agent):
         # state, info = self.env.reset()
         # n_observations = len(state)
 
-        self.policy_net = DQN(self.obsd, self.hidd, self.actd)
-        self.target_net = DQN(self.obsd, self.hidd, self.actd)
+        self.policy_net = DQN(self.obsd, self.actd)
+        self.target_net = DQN(self.obsd, self.actd)
 
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR, amsgrad=True)
         self.memory = ReplayMemory(10000)
+        self.eps_threshold = 1
 
         self.steps_done = 0
+
+    def convert_state_to_input(self, state):
+        chips_left = state["chips_left"]
+        hand_actions = state["hand_actions"]
+        discard_actions = state["discard_actions"]
+        deck = state["deck"]
+        hand_size, rank = state["observable_hand"]
+        observable_hand = self.env.unrank_combination(52, hand_size, rank)
+        observable_hand_bitmap = np.zeros((52,))
+        observable_hand_bitmap[observable_hand] = 1
+        return np.concatenate(
+            (chips_left, [hand_actions], [discard_actions], deck, observable_hand_bitmap),
+            dtype=np.float32
+        ).reshape((1,-1))
 
     def update(
         self,
@@ -97,6 +139,10 @@ class DQNAgent(Agent):
     ):
         reward = torch.tensor([reward_f])
 
+        # convert to input type
+        cur_state = self.convert_state_to_input(cur_state)
+        next_state = self.convert_state_to_input(next_state)
+
         if terminated:
             next_state = None
         else:
@@ -105,7 +151,12 @@ class DQNAgent(Agent):
             ).unsqueeze(0)
 
         # Store the transition in memory
-        self.memory.push(cur_state, torch.tensor([[action]], dtype=torch.long), next_state, reward)
+        self.memory.push(
+            torch.tensor(cur_state, dtype=torch.float32).unsqueeze(0), 
+            torch.tensor([[[action]]], dtype=torch.long),
+            next_state,
+            reward
+        )
 
         # Perform one step of the optimization (on the policy network)
         self.optimize_model()
@@ -121,16 +172,20 @@ class DQNAgent(Agent):
 
     def get_action(self, state) -> int:
         sample = random.random()
-        eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+        self.eps_threshold = EPS_END + (EPS_START - EPS_END) * \
             math.exp(-1. * self.steps_done / EPS_DECAY)
         self.steps_done += 1
-        if sample > eps_threshold:
+        input = self.convert_state_to_input(state)
+        if sample > self.eps_threshold:
+            dprint(f"get_action: Sampling action from policy, {self.eps_threshold=:.3f}")
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                return self.policy_net(state).max(1).indices.view(1, 1).item()
+                #print(pn := self.policy_net(torch.from_numpy(input)))
+                return self.policy_net(torch.from_numpy(input)).max(1).indices.view(1, 1).item()
         else:
+            dprint(f"get_action: Sampling action randomly, {self.eps_threshold=:.3f}")
             return self.env.action_space.sample()
 
     def optimize_model(self):
@@ -154,7 +209,7 @@ class DQNAgent(Agent):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+        state_action_values = self.policy_net(state_batch).gather(2, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
@@ -165,7 +220,7 @@ class DQNAgent(Agent):
         with torch.no_grad():
             next_state_values[non_final_mask] = self.target_net(
                 non_final_next_states
-            ).max(1).values
+            ).max(1).values.max(1).values
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
@@ -176,6 +231,7 @@ class DQNAgent(Agent):
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
+
         # In-place gradient clipping
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
