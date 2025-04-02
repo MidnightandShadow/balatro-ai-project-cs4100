@@ -1,5 +1,5 @@
 ENTRYPOINT:=entrypoints/main.py
-ACTIVATE:=source env/bin/activate
+ACTIVATE:=. ./env/bin/activate
 
 all: env
 
@@ -7,7 +7,7 @@ all: env
 
 env: requirements.txt
 	python3 -m venv env \
-		&& source env/bin/activate \
+		&& . ./env/bin/activate \
 		&& pip3 install --upgrade pip \
 		&& pip3 install -r requirements.txt
 

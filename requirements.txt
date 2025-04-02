@@ -3,3 +3,4 @@ gymnasium
 black
 pylint
 pytest
+# torch

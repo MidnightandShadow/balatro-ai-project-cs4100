@@ -11,17 +11,17 @@ class Agent(ABC):
         self.env = env
 
     @abstractmethod
-    def get_action(self, obs) -> int:
+    def get_action(self, state) -> int:
         pass
 
     @abstractmethod
     def update(
         self,
-        obs, # obs type
+        cur_state, # obs type
         action: int,
-        reward: float,
+        reward_f: float,
         terminated: bool,
-        next_obs: tuple[int, int, bool],
+        next_state, # obs type
     ):
         pass
 
