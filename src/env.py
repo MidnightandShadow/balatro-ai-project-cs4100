@@ -191,7 +191,6 @@ class BalatroEnv(gym.Env):
         
         k = 1
         while action >= comb(8,k):
-            print(action)
             action -= comb(8,k)
             k += 1
 
