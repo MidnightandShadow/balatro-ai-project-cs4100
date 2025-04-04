@@ -8,9 +8,11 @@ import torch.optim as optim
 
 import math
 import random
+import gc
 import numpy as np
 from collections import namedtuple, deque, OrderedDict
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 DEBUG = False
 
@@ -63,32 +65,32 @@ class DQN(nn.Module):
         """
         super(DQN, self).__init__()
 
-        self.NHEADS = 436
-        self.EMBDIM = 436
-        self.NLAYERS = 2
+        self.NHEADS = 54
+        self.EMBDIM = 54
+        self.NLAYERS = 8
 
-        self.pe =  PositionalEncoding(self.EMBDIM)
-        self.mha = [nn.MultiheadAttention(self.EMBDIM, self.NHEADS, batch_first=True)
+        self.pe =  PositionalEncoding(self.EMBDIM).to(device)
+        self.mha = [nn.MultiheadAttention(self.EMBDIM, self.NHEADS, batch_first=True).to(device)
             for _ in range(self.NLAYERS)
         ]
-        self.key = [torch.randn((1,self.NHEADS,self.EMBDIM)) for _ in range(self.NLAYERS)]
-        self.val = [torch.randn((1,self.NHEADS,self.EMBDIM)) for _ in range(self.NLAYERS)]
-        self.lin = [nn.Linear(self.EMBDIM,self.EMBDIM) for _ in range(self.NLAYERS)]
-        self.batch_norm = [nn.BatchNorm1d(num_features=8) for _ in range(self.NLAYERS)]
+        self.key = [torch.randn((1,self.NHEADS,self.EMBDIM)).to(device) for _ in range(self.NLAYERS)]
+        self.val = [torch.randn((1,self.NHEADS,self.EMBDIM)).to(device) for _ in range(self.NLAYERS)]
+        self.lin = [nn.Linear(self.EMBDIM,self.EMBDIM).to(device) for _ in range(self.NLAYERS)]
+        self.batch_norm = [nn.BatchNorm1d(num_features=8).to(device) for _ in range(self.NLAYERS)]
 
         LINDIM = self.EMBDIM + 52 + 3
 
-        self.lin1 = nn.Linear(LINDIM,LINDIM)
-        self.ban1 = nn.BatchNorm1d(num_features=1)
-        self.lin2 = nn.Linear(LINDIM,LINDIM)
-        self.ban2 = nn.BatchNorm1d(num_features=1)
+        self.lin1 = nn.Linear(LINDIM,LINDIM).to(device)
+        self.ban1 = nn.BatchNorm1d(num_features=1).to(device)
+        self.lin2 = nn.Linear(LINDIM,LINDIM).to(device)
+        self.ban2 = nn.BatchNorm1d(num_features=1).to(device)
 
-        assert(LINDIM >= 436)
-        self.final_linear = nn.Linear(LINDIM, 436)
+        #assert(LINDIM >= 436)
+        self.final_linear = nn.Linear(LINDIM, 436).to(device)
 
-        self.relu = nn.ReLU()
-        self.flatten = nn.Flatten()
-        self.softmax = nn.Softmax(dim=1)
+        self.relu = nn.ReLU().to(device)
+        self.flatten = nn.Flatten().to(device)
+        self.softmax = nn.Softmax(dim=2).to(device)
 
 
     # Called with either one element to determine next action, or a batch
@@ -98,16 +100,16 @@ class DQN(nn.Module):
         if len(x.shape) == 2:
             x = x.unsqueeze(0)
 
+        x.to(device)
+
         # x        :: (B,1,63)
         # obs_hand :: (B,8)
         # rest     :: (B,55)
-        obs_hands = x[:,:,0:8].squeeze(1)
-        rest      = x[:,:,8:].squeeze(1)
-
-        # 
+        obs_hands = x[:,:,0:8].squeeze(1).to(device)
+        rest      = x[:,:,8:].squeeze(1).to(device)
 
         """ EMBEDDING """
-        card_embeddings = torch.zeros((x.shape[0],8,self.EMBDIM))
+        card_embeddings = torch.zeros((x.shape[0],8,self.EMBDIM)).to(device)
         for i, obs_hand in enumerate(obs_hands):
             for j, card in enumerate(obs_hand):
                 emb = Card.int_to_emb(int(card.item()))
@@ -115,8 +117,8 @@ class DQN(nn.Module):
                 card_embeddings[i,j] = torch.tensor(emb)
 
         batch_size = x.shape[0]
-        K = torch.ones((batch_size, self.EMBDIM, self.EMBDIM))
-        V = torch.ones((batch_size, self.EMBDIM, self.EMBDIM))
+        K = torch.ones((batch_size, self.EMBDIM, self.EMBDIM)).to(device)
+        V = torch.ones((batch_size, self.EMBDIM, self.EMBDIM)).to(device)
 
         """ MULTI-ATTENTION BLOCKS """
         attn_output = self.pe(card_embeddings)
@@ -134,6 +136,7 @@ class DQN(nn.Module):
         flat_output = torch.concatenate((flat_output, rest), dim=1)
 
         """ FFN """
+        #print(f"{x=}")
         x = flat_output.unsqueeze(1)
 
         x = self.lin1(x)
@@ -176,11 +179,13 @@ class ReplayMemory(object):
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 24
-GAMMA = 0.99
+BATCH_SIZE = 256
+TRAIN_FREQ = 32
+# GAMMA = 0.10 # this results in a model that rarely ever DISCARDs, since it's greedy
+GAMMA = 0.90
 EPS_START = 0.90
 EPS_END = 0.05
-EPS_DECAY = 10**4
+EPS_DECAY = 10**5
 TAU = 0.005
 LR = 1e-4
 
@@ -197,8 +202,8 @@ class DQNAgent(Agent):
         # state, info = self.env.reset()
         # n_observations = len(state)
 
-        self.policy_net = DQN()
-        self.target_net = DQN()
+        self.policy_net = DQN().to(device)
+        self.target_net = DQN().to(device)
 
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
@@ -271,19 +276,19 @@ class DQNAgent(Agent):
         input = self.convert_state_to_input(state)
         self.was_last_action_nn = sample > self.eps_threshold
         if sample > self.eps_threshold:
-            dprint(f"get_action: Sampling action from policy, {self.eps_threshold=:.3f}")
+            #print(f"get_action: Sampling action from policy, {self.eps_threshold=:.3f}")
             with torch.no_grad():
                 # t.max(1) will return the largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                #print(pn := self.policy_net(torch.from_numpy(input)))
+                # print(pn := self.policy_net(torch.from_numpy(input)))
                 return self.policy_net(torch.from_numpy(input)).max(2).indices.view(1, 1).item()
         else:
             dprint(f"get_action: Sampling action randomly, {self.eps_threshold=:.3f}")
             return self.env.action_space.sample()
 
     def optimize_model(self):
-        if len(self.memory) < BATCH_SIZE:
+        if len(self.memory) < BATCH_SIZE or len(self.memory) % TRAIN_FREQ != 0:
             return
         transitions = self.memory.sample(BATCH_SIZE)
         # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
@@ -296,9 +301,9 @@ class DQNAgent(Agent):
         non_final_mask = torch.tensor(
             tuple(map(lambda s: s is not None, batch.next_state)), dtype=torch.bool)
         non_final_next_states = torch.cat([s for s in batch.next_state if s is not None])
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
+        state_batch = torch.cat(batch.state).to(device)
+        action_batch = torch.cat(batch.action).to(device)
+        reward_batch = torch.cat(batch.reward).to(device)
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
@@ -310,10 +315,10 @@ class DQNAgent(Agent):
         # on the "older" target_net; selecting their best reward with max(1).values
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
-        next_state_values = torch.zeros(BATCH_SIZE)
+        next_state_values = torch.zeros(BATCH_SIZE).to(device)
         with torch.no_grad():
             next_state_values[non_final_mask] = self.target_net(
-                non_final_next_states
+                non_final_next_states.to(device)
             ).max(1).values.max(1).values
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
@@ -332,4 +337,9 @@ class DQNAgent(Agent):
         # In-place gradient clipping
         torch.nn.utils.clip_grad_value_(self.policy_net.parameters(), 100)
         self.optimizer.step()
+
+        # After we optimize, we garbage collect
+        if torch.cuda.is_available():
+            gc.collect()
+            torch.cuda.empty_cache()
 

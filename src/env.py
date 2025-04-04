@@ -16,6 +16,13 @@ from src.simulator import simulate_turn
 
 MAX_CHIPS = 100_000
 
+"""
+TODO:
+    - Our BalatroEnv constructor should probably take in a `RewardStrategy` class that 
+      represents a strategy for rewarding an agent given a (state, action, state') triple.
+
+"""
+
 class BalatroEnv(gym.Env):
     """
     Represents our Balatro GameState as an AI environment following the gymnasium Env
@@ -98,7 +105,8 @@ class BalatroEnv(gym.Env):
         agent_score_difference = self.game_state.scored_chips - initial_scored_chips
         reward = (
             self._win_reward() if terminated and self.game_state.did_player_win()
-            else self._lose_reward() if terminated
+            # We want the agent to play the best it can, even if it loses
+            else self._lose_reward() + agent_score_difference if terminated
             else agent_score_difference
         )
         observation = self._get_obs()
@@ -171,7 +179,11 @@ class BalatroEnv(gym.Env):
         return self.game_state.blind_chips * 5
 
     def _lose_reward(self) -> int:
-        return self.game_state.blind_chips * -5
+        # NOTE: A lose reward that is really negative punishes the agent too harshly for 
+        #       being in a state where it might not even be possible to win from!
+        #       
+        #       Let's instead rely on rewards.
+        return 0
 
     def action_index_to_action(self, action: int) -> Action:
         assert(0 <= action < 436)

@@ -159,7 +159,10 @@ class Action:
 
     def __repr__(self):
         #return f"Action: {self.action_type.name}\nCards Chosen: {self.played_hand}"
-        return f"{self.action_type.name}: {self.played_hand}"
+        info = ""
+        if self.action_type == ActionType.HAND:
+            info = f" ({hand_to_scored_hand(self.played_hand).poker_hand.name})"
+        return f"{self.action_type.name}{info}: {self.played_hand}"
 
     def copy(self) -> Action:
         return Action(self.action_type, self.played_hand.copy())

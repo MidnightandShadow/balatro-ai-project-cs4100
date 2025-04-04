@@ -85,3 +85,6 @@ __pypackages__/
 
 ### JetBrains
 .idea/*
+
+*.swp
+env/
