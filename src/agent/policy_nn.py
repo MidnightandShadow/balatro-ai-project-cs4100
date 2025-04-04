@@ -5,7 +5,6 @@ from src.agent.agent import Agent
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 
 import math
 import random
@@ -28,9 +27,6 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
         pe = torch.zeros(1, max_len, d_model)
-        #print(pe.shape)
-        #print(div_term.shape)
-        #print(position.shape)
         pe[0, :, 0::2] = torch.sin(position * div_term)
         pe[0, :, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe)
@@ -45,7 +41,6 @@ class PositionalEncoding(nn.Module):
 
 class DQN(nn.Module):
     def __init__(self):
-        super(DQN, self).__init__()
         """
 
         Each node in the first layer should correspond to the various "types of hands"
@@ -66,84 +61,94 @@ class DQN(nn.Module):
         mapping to the 436 dimension output action is absurd.
 
         """
-        obsd = 8 + 52 + 1 + 1 + 1
-        actd = 436
-        N = 1000 # for the 52 cards in the deck
-        self.layer1 = nn.Linear(obsd, N)
-        self.layer2 = nn.Linear(N, N)
-        self.layer3 = nn.Linear(N, actd)
-        self.pe =  PositionalEncoding(18)
-        self.model = nn.Sequential(OrderedDict([
-            ("lay1", self.layer1),
-            ("rel1", nn.ReLU()),
-            ("lay2", self.layer2),
-            ("rel2", nn.ReLU()),
-            ("lay3", self.layer3),
-            ("sof3", nn.Softmax(dim=-1)),
-        ]))
-        NHEADS = 18
-        self.mha1 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
-        self.key1 = torch.randn((1,NHEADS,18))
-        self.val1 = torch.randn((1,NHEADS,18))
+        super(DQN, self).__init__()
 
-        self.mha2 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
-        self.key2 = torch.randn((1,NHEADS,18))
-        self.val2 = torch.randn((1,NHEADS,18))
+        self.NHEADS = 436
+        self.EMBDIM = 436
+        self.NLAYERS = 2
 
-        self.mha3 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
-        self.key3 = torch.randn((1,NHEADS,18))
-        self.val3 = torch.randn((1,NHEADS,18))
+        self.pe =  PositionalEncoding(self.EMBDIM)
+        self.mha = [nn.MultiheadAttention(self.EMBDIM, self.NHEADS, batch_first=True)
+            for _ in range(self.NLAYERS)
+        ]
+        self.key = [torch.randn((1,self.NHEADS,self.EMBDIM)) for _ in range(self.NLAYERS)]
+        self.val = [torch.randn((1,self.NHEADS,self.EMBDIM)) for _ in range(self.NLAYERS)]
+        self.lin = [nn.Linear(self.EMBDIM,self.EMBDIM) for _ in range(self.NLAYERS)]
+        self.batch_norm = [nn.BatchNorm1d(num_features=8) for _ in range(self.NLAYERS)]
 
-        self.lin = nn.Linear(144, 436)
+        LINDIM = self.EMBDIM + 52 + 3
+
+        self.lin1 = nn.Linear(LINDIM,LINDIM)
+        self.ban1 = nn.BatchNorm1d(num_features=1)
+        self.lin2 = nn.Linear(LINDIM,LINDIM)
+        self.ban2 = nn.BatchNorm1d(num_features=1)
+
+        assert(LINDIM >= 436)
+        self.final_linear = nn.Linear(LINDIM, 436)
+
+        self.relu = nn.ReLU()
+        self.flatten = nn.Flatten()
+        self.softmax = nn.Softmax(dim=1)
 
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
-        # x :: (??, 107)
         # obs_hand, deck, ...
         if len(x.shape) == 2:
             x = x.unsqueeze(0)
 
-        # x :: (1,1,107)
-
+        # x        :: (B,1,63)
+        # obs_hand :: (B,8)
+        # rest     :: (B,55)
         obs_hands = x[:,:,0:8].squeeze(1)
-        rst       = x[:,:,8:]
+        rest      = x[:,:,8:].squeeze(1)
 
-        #print(obs_hands.shape)
-        card_embeddings = torch.zeros((x.shape[0],8,18))
-        #print(card_embeddings.shape)
+        # 
+
+        """ EMBEDDING """
+        card_embeddings = torch.zeros((x.shape[0],8,self.EMBDIM))
         for i, obs_hand in enumerate(obs_hands):
             for j, card in enumerate(obs_hand):
-                arr = Card.int_to_emb(int(card.item()))
-                #print(arr, len(arr))
-                card_embeddings[i,j] = torch.tensor(arr)
-        #print("pe(ce):: ", self.pe(card_embeddings).shape)
-        #print("pe :", self.pe(card_embeddings).shape)
+                emb = Card.int_to_emb(int(card.item()))
+                emb = emb + [1] * (self.EMBDIM - len(emb)) # one extend emb
+                card_embeddings[i,j] = torch.tensor(emb)
+
         batch_size = x.shape[0]
-        K = torch.ones((batch_size, self.key1.shape[1], self.key1.shape[2]))
-        V = torch.ones((batch_size, self.val1.shape[1], self.val1.shape[2]))
-        attn_output = self.mha1.forward(
-            self.pe(card_embeddings), 
-            K@self.key1,
-            V@self.val1,
-            need_weights=False
-        )[0]
-        attn_output = self.mha2.forward(
-            attn_output, 
-            K@self.key2,
-            V@self.val2,
-            need_weights=False
-        )[0]
-        attn_output = self.mha3.forward(
-            attn_output,
-            K@self.key3,
-            V@self.val3,
-            need_weights=False
-        )[0]
-        flat_output = nn.Flatten()(attn_output).unsqueeze(1)
-        #print(flat_output.shape)
-        return self.lin(flat_output)
+        K = torch.ones((batch_size, self.EMBDIM, self.EMBDIM))
+        V = torch.ones((batch_size, self.EMBDIM, self.EMBDIM))
+
+        """ MULTI-ATTENTION BLOCKS """
+        attn_output = self.pe(card_embeddings)
+        for i in range(self.NLAYERS):
+            attn_output = self.mha[i].forward(
+                attn_output, 
+                K@self.key[i],
+                V@self.val[i],
+                need_weights=False
+            )[0]
+            attn_output = self.lin[i].forward(attn_output)
+            attn_output = self.relu(attn_output)
+            attn_output = self.batch_norm[i](attn_output)
+        flat_output = self.flatten(attn_output[:,0,:])
+        flat_output = torch.concatenate((flat_output, rest), dim=1)
+
+        """ FFN """
+        x = flat_output.unsqueeze(1)
+
+        x = self.lin1(x)
+        x = self.relu(x)
+        x = self.ban1(x)
+
+        x = self.lin2(x)
+        x = self.relu(x)
+        x = self.ban2(x)
+
+        x = self.final_linear(x)
+        x = self.relu(x)
+        x = self.softmax(x)
+
+        return x
 
 Transition = namedtuple(
     'Transition', ('state', 'action', 'next_state', 'reward')
@@ -171,11 +176,11 @@ class ReplayMemory(object):
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 128
+BATCH_SIZE = 24
 GAMMA = 0.99
-EPS_START = 0.9
+EPS_START = 0.90
 EPS_END = 0.05
-EPS_DECAY = 10**3
+EPS_DECAY = 10**4
 TAU = 0.005
 LR = 1e-4
 
@@ -200,6 +205,7 @@ class DQNAgent(Agent):
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr=LR, amsgrad=True)
         self.memory = ReplayMemory(10000)
         self.eps_threshold = 1
+        self.was_last_action_nn = False
 
         self.steps_done = 0
 
@@ -263,6 +269,7 @@ class DQNAgent(Agent):
             math.exp(-1. * self.steps_done / EPS_DECAY)
         self.steps_done += 1
         input = self.convert_state_to_input(state)
+        self.was_last_action_nn = sample > self.eps_threshold
         if sample > self.eps_threshold:
             dprint(f"get_action: Sampling action from policy, {self.eps_threshold=:.3f}")
             with torch.no_grad():
@@ -313,7 +320,10 @@ class DQNAgent(Agent):
 
         # Compute Huber loss
         criterion = nn.SmoothL1Loss()
-        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+        loss = criterion(
+            state_action_values, 
+            expected_state_action_values.unsqueeze(1).unsqueeze(1)
+        )
 
         # Optimize the model
         self.optimizer.zero_grad()

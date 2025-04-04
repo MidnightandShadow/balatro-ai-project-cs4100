@@ -7,8 +7,10 @@ import gymnasium as gym
 import numpy as np
 
 from src.common import Action, ActionType, Card
-from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS
-from src.game_state import GameState, INITIAL_GAME_STATE
+from src.constants import (
+    HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
+)
+from src.game_state import GameState, generate_deck
 from src.observer_manager import ObserverManager
 from src.simulator import simulate_turn
 
@@ -61,7 +63,13 @@ class BalatroEnv(gym.Env):
         :return: obs, reward, terminated, truncated, info
         """
         super().reset(seed=seed)
-        self.game_state = INITIAL_GAME_STATE
+        self.game_state = GameState(
+            blind_chips=SMALL_BLIND_CHIPS,
+            scored_chips=0,
+            hand_actions=HAND_ACTIONS,
+            discard_actions=DISCARD_ACTIONS,
+            deck=generate_deck(),
+        )
 
         observation = self._get_obs()
         info = self._get_info()
