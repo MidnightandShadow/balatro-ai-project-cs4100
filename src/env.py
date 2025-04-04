@@ -78,9 +78,10 @@ class BalatroEnv(gym.Env):
 
         initial_scored_chips = self.game_state.scored_chips
 
+        act = self.action_index_to_action(action)
         self.game_state = simulate_turn(
             self.game_state,
-            self.action_index_to_action(action),
+            act,
             self.observer_manager,
         )
 
@@ -93,7 +94,7 @@ class BalatroEnv(gym.Env):
             else agent_score_difference
         )
         observation = self._get_obs()
-        info = self._get_info()
+        info = {"previous_action": act}
 
         return observation, reward, terminated, truncated, info
 
@@ -187,7 +188,7 @@ class BalatroEnv(gym.Env):
         assert(8 == len(ordered_cards)) # we hard-code that there are 8 cards
         ordered_cards.sort(key=Card.to_int)
         action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
-        action -= 218
+        action %= 218
         
         k = 1
         while action >= comb(8,k):
