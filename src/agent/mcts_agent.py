@@ -1,33 +1,18 @@
 import random
 import time
-from math import sqrt, log2
+from math import sqrt, log2, log
 from typing import Optional
 
 from src.agent.agent import Agent
 from src.env import BalatroEnv
 from src.game_state import GameState
 from src.player import Player
-
-
-class MctsAgent(Agent):
-    def __init__(self, env: BalatroEnv):
-        super().__init__(env)
-
-    def get_action(self, obs) -> int:
-        pass
-
-    def update(
-        self,
-        obs,
-        action: int,
-        reward: float,
-        terminated: bool,
-        next_obs: tuple[int, int, bool],
-    ):
-        pass
-
-    def _get_random_action(self) -> int:
-        return self.env.action_space.sample()
+from src.strategy import (
+    PrioritizeFlushSimple,
+    FirstFiveCardsStrategy,
+    RandomStrategy,
+    PartRandomStrategy,
+)
 
 
 class MCTSNode:
@@ -39,108 +24,218 @@ class MCTSNode:
     INVARIANT: Counts for win_count and visited_count are updated during backprop.
     INVARIANT: When creating a child node from a parent node n, parent field is initialized with n.
     """
-    def __init__(self, action: int, win_count: int = 0, visited_count: int = 0, parent: Optional['MCTSNode'] = None):
+
+    def __init__(
+        self,
+        action: int,
+        win_count: int = 0,
+        visited_count: int = 0,
+        parent: Optional["MCTSNode"] = None,
+    ):
         self.action = action
         self.win_count = win_count
         self.visited_count = visited_count
         self.parent = parent
-        self.children: list['MCTSNode'] = []
+        self.children: list["MCTSNode"] = []
 
-    def add_child(self, child: 'MCTSNode'):
+    def add_child(self, child: "MCTSNode"):
         self.children.append(child)
 
 
-def mcts(env: BalatroEnv, player: Player, time_limit_in_seconds: int = 5):
-    """
-    Implements the MCTS algorithm as discussed in Russell & Norvig's AIMA 4e, pp. 207 - 210.
-    The overall structure mimics their pseudocode in Figure 6.11 on page 209, but a few modifications
-    were made to implement their pseudocode as real code adapted to fit our codebase.
-    """
-    mcts_already_sampled_actions: list[int] = []
-    tree = MCTSNode(-1)  # The action that resulted in the initial state is ignored
-    start_time_in_seconds = time.time()
-
-    while _is_time_remaining(start_time_in_seconds, time_limit_in_seconds):
-        selection = _select(tree)
-        new_child = _expand(selection, env, mcts_already_sampled_actions)
-        reward = _simulate(env, env.simulate_single_turn(new_child.action), player)
-        _backprop(reward, new_child)
-
-    children_playouts = [child.visited_count for child in tree.children]
-    greatest_playout_index = children_playouts.index(max(children_playouts))
-
-    return tree.children[greatest_playout_index].action
-
-
-def _is_time_remaining(start_time_in_seconds: float, time_limit_in_seconds: int) -> bool:
+def _is_time_remaining(
+        start_time_in_seconds: float, time_limit_in_seconds: int
+) -> bool:
     return (time.time() - start_time_in_seconds) < time_limit_in_seconds
 
 
-def _select(initial_node: MCTSNode) -> MCTSNode:
-    """
-    INVARIANT: initial_node is not null.
-    INVARIANT: since the result of UCB1 is always non-zero, will always be able to return one node.
-    """
-    if len(initial_node.children) == 0:
+class MctsAgent(Agent):
+    def __init__(self, env: BalatroEnv):
+        super().__init__(env)
+        self.NUM_ITERATIONS = 2000
+        self.EXPLORATION_CONSTANT = 1.52
+        self.epsilon = 0
+        self.playout_player = Player(PartRandomStrategy(epsilon=self.epsilon, other_strategy=PrioritizeFlushSimple()))
+        self.NO_MORE_NEW_STATES_AT_DEPTH_1 = False
+
+    def get_action(self, obs) -> int:
+        return self.mcts()
+
+    def update(
+        self,
+        obs,
+        action: int,
+        reward: float,
+        terminated: bool,
+        next_obs: tuple[int, int, bool],
+    ):
+        """
+        MCTS uses online planning, so there is no need to "update" the agent: self.env will already have
+        all the updated information each time the agent takes a step in the environment.
+        """
+        pass
+
+    def mcts(self, time_limit_in_seconds: int = 3) -> int:
+        """
+        Implements the MCTS algorithm as discussed in Russell & Norvig's AIMA 4e, pp. 207 - 210.
+        The overall structure mimics their pseudocode in Figure 6.11 on page 209, but a few modifications
+        were made to implement their pseudocode as real code adapted to fit our codebase.
+        """
+        self.NO_MORE_NEW_STATES_AT_DEPTH_1 = False
+        mcts_already_sampled_actions_for_depth_1: list[int] = []
+        tree = MCTSNode(-1)  # The action that resulted in the initial state is ignored
+        start_time_in_seconds = time.time()
+        num_iterations = 0
+
+        # while _is_time_remaining(start_time_in_seconds, time_limit_in_seconds):
+        while num_iterations < self.NUM_ITERATIONS:
+
+            selection = self._select(tree, mcts_already_sampled_actions_for_depth_1)
+            new_child = self._expand(selection, mcts_already_sampled_actions_for_depth_1)
+            reward = self._simulate(new_child.action)
+            self._backprop(reward, new_child)
+            num_iterations += 1
+
+        children_playouts = [child.visited_count for child in tree.children]
+        greatest_playout_index = children_playouts.index(max(children_playouts))
+
+        return tree.children[greatest_playout_index].action
+
+    def _select(
+        self,
+        initial_node: MCTSNode,
+        mcts_already_sampled_actions_for_depth_1: list[int],
+    ) -> MCTSNode:
+        """
+        INVARIANT: initial_node is not None.
+        """
+        num_children = len(initial_node.children)
+        if num_children == 0:
+            return initial_node
+
+        children_with_greatest_ucbs = []
+        greatest_ucb_so_far = self._ucb1_for_node(initial_node)
+
+        for child in initial_node.children:
+            ucb = self._ucb1_for_node(child)
+
+            if ucb > greatest_ucb_so_far:
+                children_with_greatest_ucbs = [child]
+            elif ucb == greatest_ucb_so_far:
+                children_with_greatest_ucbs.append(child)
+
+        children_with_greatest_ucbs.append(initial_node)
+        selected = random.sample(children_with_greatest_ucbs, 1).pop()
+
+        # We want to explore a new leaf from the current node instead of continuing to search down
+        if selected == initial_node:
+
+            return self._select_help(
+                initial_node, mcts_already_sampled_actions_for_depth_1
+            )
+
+        return self._select(selected, mcts_already_sampled_actions_for_depth_1)
+
+    def _select_help(
+        self,
+        initial_node: MCTSNode,
+        mcts_already_sampled_actions_for_depth_1: list[int],
+    ):
+        """
+        INVARIANT: Assumes called from _select() and that the node with the greatest UCB was the initial_node.
+        """
+        # We are in the root note, and we want to ensure we don't make multiple leaves for the same actions
+        if not self.NO_MORE_NEW_STATES_AT_DEPTH_1 or initial_node.parent is None:
+            if self.env.get_action_space_possibly_without_discards().n == 218:
+                discard_actions_used = len(
+                    list(
+                        filter(
+                            lambda a: a >= 218, mcts_already_sampled_actions_for_depth_1
+                        )
+                    )
+                )
+                if discard_actions_used == 218 or discard_actions_used == 0:
+                    self.NO_MORE_NEW_STATES_AT_DEPTH_1 = True
+                    return random.sample(initial_node.children, 1).pop()
+
+            else:  # we still have discards left, so 436 total possible actions
+                if len(initial_node.children) == 436:
+                    self.NO_MORE_NEW_STATES_AT_DEPTH_1 = True
+                    return random.sample(initial_node.children, 1).pop()
+
         return initial_node
 
-    children_with_greatest_ucbs = []
-    greatest_ucb_so_far = 0
+    def _ucb1_for_node(
+        self, node: MCTSNode) -> float:
+        parent_playouts = (
+            node.visited_count if node.parent is None else node.parent.visited_count
+        )
+        return self._ucb1(node.win_count, node.visited_count, parent_playouts)
 
-    for child in initial_node.children:
-        ucb = _ucb1_for_node(child)
+    def _ucb1(
+        self,
+        util: int,
+        playouts: int,
+        parent_playouts: int,
+    ) -> float:
+        return (util / playouts) + self.EXPLORATION_CONSTANT * sqrt(log(parent_playouts) / playouts)
 
-        if ucb > greatest_ucb_so_far:
-            children_with_greatest_ucbs = [child]
-        elif ucb == greatest_ucb_so_far:
-            children_with_greatest_ucbs.append(child)
+    def _expand(
+        self, parent: MCTSNode, mcts_already_sampled_actions: list[int]
+    ) -> MCTSNode:
+        successor = MCTSNode(
+            self._get_new_random_action(mcts_already_sampled_actions, parent),
+            parent=parent,
+        )
+        parent.add_child(successor)
+        return successor
 
-    return _select(random.sample(children_with_greatest_ucbs, 1))
+    def _simulate(self, action: int):
+        if self.env.game_state.hand_actions == 1 and action < 218:
+            return 1 if self.env.simulate_single_turn(action).did_player_win() else 0
 
+        game_state = self.env.simulate_single_turn(action)
+        return (
+            1 if self.env.simulate_till_finished(game_state, self.playout_player) else 0
+        )
 
-_EXPLORATION_CONSTANT = sqrt(2)
+    def _backprop(self, reward: int, node: MCTSNode) -> None:
+        """
+        INVARIANT: reward is 1 if simulation resulted in win, 0 otherwise.
+        """
+        if node is None:
+            return
 
+        node.win_count += reward
+        node.visited_count += 1
+        self._backprop(reward, node.parent)
 
-def _ucb1_for_node(node: MCTSNode, exploration_factor: float = _EXPLORATION_CONSTANT) -> float:
-    parent_playouts = 0 if not node.parent else node.parent.visited_count
-    return _ucb1(node.win_count, node.visited_count, parent_playouts, exploration_factor)
+    def _get_new_random_action(
+        self,
+        mcts_already_sampled_actions: list[int],
+        parent: Optional["MCTSNode"],
+    ):
+        """
+        Gets a "new" random action. Returns any random action from the environment's sample space if the current
+        node is not at the first layer, otherwise returns a random action that has not already been chosen.
+        INVARIANT: mcts_already_sampled_actions always refers to the same list, and mutation here affects the
+                   corresponding list in the caller.
+        """
+        action_space = self.env.get_action_space_possibly_without_discards()
 
+        if parent.parent is not None:
+            return action_space.sample()
 
-def _ucb1(util: int, playouts: int, parent_playouts: int, exploration_factor: float = _EXPLORATION_CONSTANT) -> float:
-    return (util / playouts) + exploration_factor * sqrt(log2(parent_playouts) / playouts)
+        # action_space_values = range(action_space.n)
+        depth_1_actions_remaining = list(
+            filter(
+                lambda a: a not in mcts_already_sampled_actions,
+                (list(range(action_space.n))),
+            )
+        )
+        if len(depth_1_actions_remaining) == 0:
+            new_action = random.sample(depth_1_actions_remaining, 1).pop()
 
+        new_action = random.sample(depth_1_actions_remaining, 1).pop()
 
-def _expand(node: MCTSNode, env: BalatroEnv, mcts_already_sampled_actions: list[int]) -> MCTSNode:
-    new_node = MCTSNode(_get_new_random_action(env, mcts_already_sampled_actions), parent=node)
-    node.add_child(new_node)
-    return new_node
-
-
-def _simulate(env: BalatroEnv, game_state: GameState, player: Player):
-    return 1 if env.simulate_till_finished(game_state, player) else 0
-
-
-def _backprop(reward: int, node: MCTSNode) -> None:
-    """
-    INVARIANT: reward is 1 if simulation resulted in win, 0 otherwise.
-    """
-    if node is None:
-        return
-
-    node.visited_count += reward
-    node.visited_count += 1
-    _backprop(reward, node.parent)
-
-
-def _get_new_random_action(env: BalatroEnv, mcts_already_sampled_actions: list[int]):
-    """
-    INVARIANT: mcts_already_sampled_actions always refers to the same list, and mutation here affects the
-               corresponding list in the caller.
-    """
-    new_action = env.action_space.sample()
-    while new_action in mcts_already_sampled_actions:
-        new_action = env.action_space.sample()
-
-    mcts_already_sampled_actions.append(new_action)
-    return new_action
-
+        mcts_already_sampled_actions.append(new_action)
+        return new_action

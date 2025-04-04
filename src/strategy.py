@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from random import sample, random
 
 from src.common import Action, ActionType, CardAttribute, group_cards_by_attribute
 from src.observable_state import ObservableState
@@ -17,6 +18,26 @@ class Strategy(ABC):
 
     def __repr__(self):
         return self.__class__.__name__
+
+
+class RandomStrategy(Strategy):
+    """Plays a Hand action with five cards randomly chosen from the observable hand"""
+    def strategize(self, state: ObservableState) -> Action:
+        random_hand = sample(state.observable_hand, k=5)
+        return Action(ActionType.HAND, random_hand)
+
+
+class PartRandomStrategy(Strategy):
+    """Part-time deferring to RandomStrategy, part-time deferring to other_strategy"""
+    def __init__(self, epsilon: float, other_strategy: Strategy):
+        self.epsilon = epsilon
+        self.other_strategy = other_strategy
+
+    def strategize(self, state: ObservableState) -> Action:
+        if random() < self.epsilon:
+            return RandomStrategy().strategize(state)
+
+        return self.other_strategy.strategize(state)
 
 
 class FirstCardStrategy(Strategy):

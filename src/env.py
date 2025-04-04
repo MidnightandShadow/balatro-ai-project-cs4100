@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
 from math import comb
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
 
 from src.common import Action, ActionType, Card
+from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS
 from src.constants import (
-    HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
+    SMALL_BLIND_CHIPS
 )
-from src.game_state import GameState, generate_deck
+from src.game_state import GameState
+from src.game_state import generate_deck
 from src.observer_manager import ObserverManager
 from src.player import Player
 from src.simulator import simulate_turn, simulate_game
@@ -122,7 +124,7 @@ class BalatroEnv(gym.Env):
         This method is exposed for the sake of MCTS, which will need to simulate games at each step in
         the environment because MCTS plans online and relies on a simulator.
 
-        :return: true if the game resulted in a win, false otherwise
+        :return: the resulting successor GameState
         """
         return simulate_turn(self.game_state, self.action_index_to_action(action), self.observer_manager)
 
@@ -136,6 +138,20 @@ class BalatroEnv(gym.Env):
         :return: true if the game resulted in a win, false otherwise
         """
         return simulate_game(game_state, player, self.observer_manager)
+
+    def get_action_space_possibly_without_discards(self):
+        """
+        Balatro does not let you even try to take a discard action if you have no discards left.
+        So, if this game state has no discards left, this returns an action space corresponding to only hand actions.
+        Otherwise, it returns the full action space.
+        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
+        the environment because MCTS plans online and relies on a simulator.
+        INVARIANT: 218 is the right size space because of the invariant established in action_index_to_action().
+        """
+        if self.game_state.discard_actions == 0:
+            return gym.spaces.Discrete(218)
+
+        return self.action_space
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -190,6 +206,9 @@ class BalatroEnv(gym.Env):
             )
         }
 
+    def get_observable_state(self):
+        return self.game_state.game_state_to_observable_state()
+
     @staticmethod
     def _get_info():
         """
@@ -209,7 +228,7 @@ class BalatroEnv(gym.Env):
         return 0
 
     def action_index_to_action(self, action: int) -> Action:
-        assert(0 <= action < 436)
+        assert(0 <= action % 218 < 436)
         """
         Step 1. Order game_state.observable_hand
         Step 2. Determine hand action / discard action (i < 218 => hand action)
@@ -232,7 +251,7 @@ class BalatroEnv(gym.Env):
         ordered_cards.sort(key=Card.to_int)
         action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
         action %= 218
-        
+
         k = 1
         while action >= comb(8,k):
             action -= comb(8,k)
@@ -241,3 +260,22 @@ class BalatroEnv(gym.Env):
         c = self.unrank_combination(8,k,action)
         cards = [ordered_cards[i] for i in c]
         return Action(action_type, cards)
+
+    def action_to_action_index(self, action: Action) -> int:
+        action_type_constant = 218 if action.action_type == ActionType.DISCARD else 0
+
+        cards = action.played_hand
+        cards.sort(key=Card.to_int)
+        ordered_cards_as_int = [c.to_int() for c in cards]
+        k = len(cards)
+
+        total = action_type_constant
+        for i in range(1, k):
+            total += comb(8, i)
+
+        observable_hand_cards_as_int = [c.to_int() for c in self.get_observable_state().observable_hand]
+        observable_hand_cards_as_int.sort()
+        ordered_cards_as_int_wrt_obs_hand_index = [observable_hand_cards_as_int.index(c) for c in ordered_cards_as_int]
+        total += self.rank_combination(8, k, ordered_cards_as_int_wrt_obs_hand_index)
+        return total
+

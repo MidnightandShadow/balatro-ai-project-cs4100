@@ -69,8 +69,8 @@ def simulate_turn(
 
 
 class IllegalActionException(Exception):
-    def __init__(self):
-        super().__init__("ILLEGAL ACTION")
+    def __init__(self, message="ILLEGAL ACTION"):
+        super().__init__(message)
 
 
 def _validate_action(state: GameState, action: Action) -> None:
@@ -79,7 +79,10 @@ def _validate_action(state: GameState, action: Action) -> None:
     to the state
     """
     if not _is_legal_action(state, action):
-        raise IllegalActionException
+        raise IllegalActionException(f"\nILLEGAL ACTION:\nSTATE:"
+                                     f"\nOBSERVABLE HAND: {state.observable_hand}"
+                                     f"\nDISCARDS LEFT: {state.discard_actions}"
+                                     f"\nACTION: {action}\n")
 
 
 def _is_legal_action(state: GameState, action: Action) -> bool:
