@@ -10,7 +10,8 @@ from src.common import Action, ActionType, Card
 from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS
 from src.game_state import GameState, INITIAL_GAME_STATE
 from src.observer_manager import ObserverManager
-from src.simulator import simulate_turn
+from src.player import Player
+from src.simulator import simulate_turn, simulate_game
 
 MAX_CHIPS = 100_000
 
@@ -96,6 +97,28 @@ class BalatroEnv(gym.Env):
         info = self._get_info()
 
         return observation, reward, terminated, truncated, info
+
+    def simulate_single_turn(self, action: int):
+        """
+        Simulates a game from the current state for one turn based on the given action_space action,
+        relying solely on the simulator. That is, this does not affect the current step of this env.
+        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
+        the environment because MCTS plans online and relies on a simulator.
+
+        :return: true if the game resulted in a win, false otherwise
+        """
+        return simulate_turn(self.game_state, self.action_index_to_action(action), self.observer_manager)
+
+    def simulate_till_finished(self, game_state: GameState, player: Player):
+        """
+        Simulates a game from the given game_state until the end of the game, relying solely on the simulator.
+        That is, this does not affect the current step of this env.
+        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
+        the environment because MCTS plans online and relies on a simulator.
+
+        :return: true if the game resulted in a win, false otherwise
+        """
+        return simulate_game(game_state, player, self.observer_manager)
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
