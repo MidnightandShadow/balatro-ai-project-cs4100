@@ -8,7 +8,7 @@ from src.simulator import IllegalActionException
 from src.env import BalatroEnv
 from src.agent.policy_nn import DQNAgent
 
-NUM_GAMES = 100_000
+NUM_GAMES = 1_000_000
 INVALID_ACTION_PUNISHMENT = -10
 PRECISION = 3
 DISCARD = "DISCARD"

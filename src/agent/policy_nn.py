@@ -41,7 +41,109 @@ class PositionalEncoding(nn.Module):
         x = x + self.pe[0,:x.size(1)]
         return self.dropout(x)
 
-class DQN(nn.Module):
+class DQNv2(nn.Module):
+    def __init__(self):
+        """
+
+        DQNv1 was a success! Although, it's troubling me that it discards so infrequently.
+        I think the reward function is foolproof -- I think maybe the bigger issue here is that the 
+        hand, discard, and deck information need to be passed into the beginning of the NN in order to make 
+        an informed decision about which of the 436 actions to pick.
+
+        """
+        super(DQN, self).__init__()
+
+        self.NHEADS = 54
+        self.EMBDIM = 54
+        self.NLAYERS = 8
+
+        self.pe =  PositionalEncoding(self.EMBDIM).to(device)
+        self.mha = [nn.MultiheadAttention(self.EMBDIM, self.NHEADS, batch_first=True).to(device)
+            for _ in range(self.NLAYERS)
+        ]
+        self.key = [torch.randn((1,self.NHEADS,self.EMBDIM)).to(device) for _ in range(self.NLAYERS)]
+        self.val = [torch.randn((1,self.NHEADS,self.EMBDIM)).to(device) for _ in range(self.NLAYERS)]
+        self.lin = [nn.Linear(self.EMBDIM,self.EMBDIM).to(device) for _ in range(self.NLAYERS)]
+        self.batch_norm = [nn.BatchNorm1d(num_features=8).to(device) for _ in range(self.NLAYERS)]
+
+        LINDIM = self.EMBDIM + 52 + 3
+
+        self.lin1 = nn.Linear(LINDIM,LINDIM).to(device)
+        self.ban1 = nn.BatchNorm1d(num_features=1).to(device)
+        self.lin2 = nn.Linear(LINDIM,LINDIM).to(device)
+        self.ban2 = nn.BatchNorm1d(num_features=1).to(device)
+
+        #assert(LINDIM >= 436)
+        self.final_linear = nn.Linear(LINDIM, 436).to(device)
+
+        self.relu = nn.ReLU().to(device)
+        self.flatten = nn.Flatten().to(device)
+        self.softmax = nn.Softmax(dim=2).to(device)
+
+
+    # Called with either one element to determine next action, or a batch
+    # during optimization. Returns tensor([[left0exp,right0exp]...]).
+    def forward(self, x):
+        # obs_hand, deck, ...
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)
+
+        x.to(device)
+
+        # x        :: (B,1,63)
+        # obs_hand :: (B,8)
+        # rest     :: (B,55)
+        obs_hands = x[:,:,0:8].squeeze(1).to(device)
+        rest      = x[:,:,8:].squeeze(1).to(device)
+
+        """ EMBEDDING """
+        card_embeddings = torch.zeros((x.shape[0],8,self.EMBDIM)).to(device)
+        for i, obs_hand in enumerate(obs_hands):
+            for j, card in enumerate(obs_hand):
+                emb = Card.int_to_emb(int(card.item()))
+                emb = emb + [1] * (self.EMBDIM - len(emb)) # one extend emb
+                card_embeddings[i,j] = torch.tensor(emb)
+
+        batch_size = x.shape[0]
+        K = torch.ones((batch_size, self.EMBDIM, self.EMBDIM)).to(device)
+        V = torch.ones((batch_size, self.EMBDIM, self.EMBDIM)).to(device)
+
+        """ POSITION ENCODING """
+        attn_output = self.pe(card_embeddings)
+
+        """ MULTI-ATTENTION BLOCKS """
+        for i in range(self.NLAYERS):
+            attn_output = self.mha[i].forward(
+                attn_output, 
+                K@self.key[i],
+                V@self.val[i],
+                need_weights=False
+            )[0]
+            attn_output = self.lin[i].forward(attn_output)
+            attn_output = self.relu(attn_output)
+            attn_output = self.batch_norm[i](attn_output)
+        flat_output = self.flatten(attn_output[:,0,:])
+        flat_output = torch.concatenate((flat_output, rest), dim=1)
+
+        """ FFN """
+        #print(f"{x=}")
+        x = flat_output.unsqueeze(1)
+
+        x = self.lin1(x)
+        x = self.relu(x)
+        x = self.ban1(x)
+
+        x = self.lin2(x)
+        x = self.relu(x)
+        x = self.ban2(x)
+
+        x = self.final_linear(x)
+        x = self.relu(x)
+        x = self.softmax(x)
+
+        return x
+
+class DQNv1(nn.Module):
     def __init__(self):
         """
 
@@ -179,13 +281,13 @@ class ReplayMemory(object):
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 256
+BATCH_SIZE = 1024
 TRAIN_FREQ = 32
 # GAMMA = 0.10 # this results in a model that rarely ever DISCARDs, since it's greedy
-GAMMA = 0.90
+GAMMA = 0.999  # no discount since the # of moves it takes to win doesn't matter
 EPS_START = 0.90
 EPS_END = 0.05
-EPS_DECAY = 10**5
+EPS_DECAY = 10**6
 TAU = 0.005
 LR = 1e-4
 
