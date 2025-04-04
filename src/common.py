@@ -14,10 +14,10 @@ from types import MappingProxyType
 
 
 class Suit(Enum):
-    SPADES = 1
-    CLUBS = 2
-    HEARTS = 3
-    DIAMONDS = 4
+    SPADES = 0
+    CLUBS = 1
+    HEARTS = 2
+    DIAMONDS = 3
 
 
 class Rank(Enum):
@@ -55,7 +55,9 @@ class Card:
         return hash((self.rank, self.suit))
 
     def __repr__(self):
-        return f"<{self.rank.name} of {self.suit.name}>"
+        #return f"<{self.rank.name} of {self.suit.name}>"
+        # A shorter representation
+        return f"<{self.suit.name[0]}{self.rank.value}>"
 
     def score(self) -> int:
         """
@@ -71,22 +73,39 @@ class Card:
         raise NotImplementedError("Invalid rank value")
 
     def to_int(self) -> int:
-        # TWO -> 0, THREE -> 1, ... ACE -> 13
+        # TWO -> 0, THREE -> 1, ... ACE -> 12
         # TWO SPADES -> 0, ..., ACE DIAMONDS -> 51
-        return len(Rank) * (self.suit.value - 1) + (self.rank.value - 2)
+        return len(Rank) * (self.suit.value) + (self.rank.value - 2)
 
     @staticmethod
-    def from_int(i: int) -> Card:
-        return _int_to_card_dict[i]
+    def from_int(i : int) -> Card:
+        rank_inv_mapping = {r.value:r for r in Rank}
+        suit_inv_mapping = {r.value:r for r in Suit}
+        return Card(rank_inv_mapping[(i%13) + 2], suit_inv_mapping[i // 13])
+
+    @staticmethod
+    def int_to_emb(i : int) -> list[int]:
+        """
+        An embedding of a card is a 18-bit array representing the suit+value combination
+        """
+        emb = [0] * 18
+        suit = i // 13
+        rank = i % 13
+        emb[suit] = 1
+        emb[rank + 4] = 1
+        emb[-1] = 1
+        return emb
 
 
-# Represents the mapping from ints to cards
-_int_to_card_dict: dict[int, Card] = {}
-for r in Rank:
-    for s in Suit:
-        card = Card(r, s)
-        _int_to_card_dict[card.to_int()] = card
-
+    def to_emb(self) -> list[int]:
+        """
+        An embedding of a card is a 18-bit array representing the suit+value combination
+        """
+        emb = [0] * 18
+        emb[self.suit.value] = 1
+        emb[self.rank.value + 4] = 1
+        emb[-1] = 1 # bias
+        return emb
 
 class PokerHand(Enum):
     HIGH_CARD = 1
@@ -139,7 +158,8 @@ class Action:
         self.played_hand = played_hand
 
     def __repr__(self):
-        return f"Action: {self.action_type.name}\nCards Chosen: {self.played_hand}"
+        #return f"Action: {self.action_type.name}\nCards Chosen: {self.played_hand}"
+        return f"{self.action_type.name}: {self.played_hand}"
 
     def copy(self) -> Action:
         return Action(self.action_type, self.played_hand.copy())

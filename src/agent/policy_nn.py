@@ -1,3 +1,4 @@
+from src.common import Card
 from src.env import BalatroEnv
 from src.agent.agent import Agent
 
@@ -9,7 +10,7 @@ import torch.nn.functional as F
 import math
 import random
 import numpy as np
-from collections import namedtuple, deque
+from collections import namedtuple, deque, OrderedDict
 
 
 DEBUG = False
@@ -19,8 +20,31 @@ def dprint(*args, **kwargs):
         print("[DEBUG]", *args, **kwargs)
 
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        #print(pe.shape)
+        #print(div_term.shape)
+        #print(position.shape)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: Tensor, shape ``[batch_size, seq_len, embedding_dim]``
+        """
+        x = x + self.pe[0,:x.size(1)]
+        return self.dropout(x)
+
 class DQN(nn.Module):
-    def __init__(self, obsd, outd):
+    def __init__(self):
         super(DQN, self).__init__()
         """
 
@@ -42,18 +66,84 @@ class DQN(nn.Module):
         mapping to the 436 dimension output action is absurd.
 
         """
-        N = 52 # for the 52 cards in the deck
+        obsd = 8 + 52 + 1 + 1 + 1
+        actd = 436
+        N = 1000 # for the 52 cards in the deck
         self.layer1 = nn.Linear(obsd, N)
         self.layer2 = nn.Linear(N, N)
-        self.layer3 = nn.Linear(N + obsd, outd)
+        self.layer3 = nn.Linear(N, actd)
+        self.pe =  PositionalEncoding(18)
+        self.model = nn.Sequential(OrderedDict([
+            ("lay1", self.layer1),
+            ("rel1", nn.ReLU()),
+            ("lay2", self.layer2),
+            ("rel2", nn.ReLU()),
+            ("lay3", self.layer3),
+            ("sof3", nn.Softmax(dim=-1)),
+        ]))
+        NHEADS = 18
+        self.mha1 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
+        self.key1 = torch.randn((1,NHEADS,18))
+        self.val1 = torch.randn((1,NHEADS,18))
+
+        self.mha2 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
+        self.key2 = torch.randn((1,NHEADS,18))
+        self.val2 = torch.randn((1,NHEADS,18))
+
+        self.mha3 = nn.MultiheadAttention(18, NHEADS, batch_first=True)
+        self.key3 = torch.randn((1,NHEADS,18))
+        self.val3 = torch.randn((1,NHEADS,18))
+
+        self.lin = nn.Linear(144, 436)
+
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
-    def forward(self, x1):
-        x = F.sigmoid(self.layer1(x1))
-        x = F.sigmoid(self.layer2(x))
-        # x is (1,52) at this point.
-        return F.softmax(self.layer3(torch.concat((x1,x), dim=-1)))
+    def forward(self, x):
+        # x :: (??, 107)
+        # obs_hand, deck, ...
+        if len(x.shape) == 2:
+            x = x.unsqueeze(0)
+
+        # x :: (1,1,107)
+
+        obs_hands = x[:,:,0:8].squeeze(1)
+        rst       = x[:,:,8:]
+
+        #print(obs_hands.shape)
+        card_embeddings = torch.zeros((x.shape[0],8,18))
+        #print(card_embeddings.shape)
+        for i, obs_hand in enumerate(obs_hands):
+            for j, card in enumerate(obs_hand):
+                arr = Card.int_to_emb(int(card.item()))
+                #print(arr, len(arr))
+                card_embeddings[i,j] = torch.tensor(arr)
+        #print("pe(ce):: ", self.pe(card_embeddings).shape)
+        #print("pe :", self.pe(card_embeddings).shape)
+        batch_size = x.shape[0]
+        K = torch.ones((batch_size, self.key1.shape[1], self.key1.shape[2]))
+        V = torch.ones((batch_size, self.val1.shape[1], self.val1.shape[2]))
+        attn_output = self.mha1.forward(
+            self.pe(card_embeddings), 
+            K@self.key1,
+            V@self.val1,
+            need_weights=False
+        )[0]
+        attn_output = self.mha2.forward(
+            attn_output, 
+            K@self.key2,
+            V@self.val2,
+            need_weights=False
+        )[0]
+        attn_output = self.mha3.forward(
+            attn_output,
+            K@self.key3,
+            V@self.val3,
+            need_weights=False
+        )[0]
+        flat_output = nn.Flatten()(attn_output).unsqueeze(1)
+        #print(flat_output.shape)
+        return self.lin(flat_output)
 
 Transition = namedtuple(
     'Transition', ('state', 'action', 'next_state', 'reward')
@@ -85,7 +175,7 @@ BATCH_SIZE = 128
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
-EPS_DECAY = 10**4
+EPS_DECAY = 10**3
 TAU = 0.005
 LR = 1e-4
 
@@ -95,8 +185,6 @@ class DQNAgent(Agent):
         env: BalatroEnv
     ):
         super().__init__(env)
-        self.obsd = 107
-        self.actd = 436
 
         # Get number of actions from gym action space
         self.n_actions = self.env.action_space.n
@@ -104,8 +192,8 @@ class DQNAgent(Agent):
         # state, info = self.env.reset()
         # n_observations = len(state)
 
-        self.policy_net = DQN(self.obsd, self.actd)
-        self.target_net = DQN(self.obsd, self.actd)
+        self.policy_net = DQN()
+        self.target_net = DQN()
 
         self.target_net.load_state_dict(self.policy_net.state_dict())
 
@@ -116,16 +204,15 @@ class DQNAgent(Agent):
         self.steps_done = 0
 
     def convert_state_to_input(self, state):
+        """ state is 8 + 52 + 1 + 1 + 1 """
         chips_left = state["chips_left"]
         hand_actions = state["hand_actions"]
         discard_actions = state["discard_actions"]
         deck = state["deck"]
         hand_size, rank = state["observable_hand"]
         observable_hand = self.env.unrank_combination(52, hand_size, rank)
-        observable_hand_bitmap = np.zeros((52,))
-        observable_hand_bitmap[observable_hand] = 1
         return np.concatenate(
-            (chips_left, [hand_actions], [discard_actions], deck, observable_hand_bitmap),
+            (observable_hand, deck, [hand_actions], [discard_actions], chips_left),
             dtype=np.float32
         ).reshape((1,-1))
 
@@ -183,7 +270,7 @@ class DQNAgent(Agent):
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
                 #print(pn := self.policy_net(torch.from_numpy(input)))
-                return self.policy_net(torch.from_numpy(input)).max(1).indices.view(1, 1).item()
+                return self.policy_net(torch.from_numpy(input)).max(2).indices.view(1, 1).item()
         else:
             dprint(f"get_action: Sampling action randomly, {self.eps_threshold=:.3f}")
             return self.env.action_space.sample()
