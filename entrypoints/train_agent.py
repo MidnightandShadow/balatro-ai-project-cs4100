@@ -3,12 +3,15 @@ import sys
 sys.path.extend([".", "./src"])
 
 import torch
+import torch.nn as nn
 
 from src.referee import *
+from src.agent.device import device
+from src.agent.nn.card_embedding import CardEmbedding
 from src.common import *
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
-from src.agent.policy_nn import DQNAgent
+from src.agent.dqn import DQNAgent
 
 NUM_GAMES = 1_000_000
 INVALID_ACTION_PUNISHMENT = -100
@@ -44,13 +47,16 @@ def main():
     global POLICY_NET
 
     manager = ObserverManager()
-    #manager.add_observer(PlayerObserver())
     env = BalatroEnv(INITIAL_GAME_STATE, manager)
-    agent = DQNAgent(env)
+    # in dimension is 63, out dimension is 436
+    agent = DQNAgent(env, lambda: nn.Sequential(
+        CardEmbedding(0,8,63,emb_dim=18),
+        nn.Flatten(),
+        nn.Linear(18*63, 436),
+    ))
     win_counter = 0
     avg_score_chips = 70        # estimate
     ALPHA = 0.001
-    LOW = 0.0001
     HIGH = 0.001
     avg_reward_per_hand = 10    # estimate
 
