@@ -5,6 +5,7 @@ sys.path.extend([".", "./src"])
 
 import torch
 import torch.nn as nn
+from torchinfo import summary
 
 from src.referee import *
 from src.agent.nn.card_embedding import CardEmbedding
@@ -64,6 +65,8 @@ def main():
         nn.Flatten(),
         Range(0,436),
     ), EPS_DECAY=10**5)
+    summary(agent.policy_net, (1,63))
+    print("\n")
     win_counter = 0
     avg_score_chips = 70        # estimate
     ALPHA = 0.001
