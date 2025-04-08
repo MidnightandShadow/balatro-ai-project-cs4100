@@ -1,13 +1,15 @@
 # Not sure how to get rid of this... lmk if someone finds a workaround
 import sys
+
 sys.path.extend([".", "./src"])
 
 import torch
 import torch.nn as nn
 
 from src.referee import *
-from src.agent.device import device
 from src.agent.nn.card_embedding import CardEmbedding
+from src.agent.nn.select import Select
+from src.agent.nn.range import Range
 from src.common import *
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
@@ -49,11 +51,19 @@ def main():
     manager = ObserverManager()
     env = BalatroEnv(INITIAL_GAME_STATE, manager)
     # in dimension is 63, out dimension is 436
+    """
+    LINEAR:
     agent = DQNAgent(env, lambda: nn.Sequential(
-        CardEmbedding(0,8,63,emb_dim=18),
+        nn.Linear(63, 436),
+    ), EPS_DECAY=10**5)
+    """
+    agent = DQNAgent(env, lambda: nn.Sequential(
+        CardEmbedding(0, 8, 63, emb_dim=450),
+        nn.TransformerEncoderLayer(450, 25),
+        Select(1),
         nn.Flatten(),
-        nn.Linear(18*63, 436),
-    ))
+        Range(0,436),
+    ), EPS_DECAY=10**5)
     win_counter = 0
     avg_score_chips = 70        # estimate
     ALPHA = 0.001

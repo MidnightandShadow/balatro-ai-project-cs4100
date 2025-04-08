@@ -10,22 +10,19 @@ class CardEmbedding(nn.Module):
         self.range_max = card_range_max
         self.emb_dim = emb_dim
         self.in_dim = in_dim
+        # (52, 18) first index is the card num, second is the embedding
+        self.register_buffer(
+            "card_buffer", 
+            torch.tensor([Card.int_to_emb(i) for i in range(52)]).to(device)
+        )
 
     def forward(self, x):
         dim = len(x.shape)
         if dim == 2:
             x = x.unsqueeze(1)
-        xs = x[:,0,self.range_min:self.range_max]
-        out = torch.zeros((x.shape[0],self.in_dim,self.emb_dim)).to(device)
-        for i, obs_hand in enumerate(xs):
-            for j, card in enumerate(obs_hand):
-                emb = Card.int_to_emb(int(card.item()))
-                emb = emb + [1] * (self.emb_dim - len(emb)) # one extend emb
-                out[i,self.range_min+j,:] = torch.tensor(emb).to(device)
-        for i in range(x.shape[0]):
-            for j in range(0, self.range_min):
-                out[i,j,:] = torch.tensor([x[i,0,j].item()] * self.emb_dim).to(device)
-        for i in range(x.shape[0]):
-            for j in range(self.range_max, self.in_dim):
-                out[i,j,:] = torch.tensor([x[i,0,j].item()] * self.emb_dim).to(device)
+        xs = x[:,0,self.range_min:self.range_max].type(torch.int)
+        out = torch.ones((x.shape[0],self.in_dim,self.emb_dim)).to(device)
+        out[:,self.range_min:self.range_max,:18] = self.card_buffer[xs]
+        out[:,:self.range_min,:] *= x[:,:,:self.range_min].swapaxes(1,2)
+        out[:,self.range_max:self.in_dim,:] *= x[:,:,self.range_max:self.in_dim].swapaxes(1,2)
         return out

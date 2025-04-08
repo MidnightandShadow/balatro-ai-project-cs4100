@@ -30,7 +30,6 @@ TRAIN_FREQ = 1
 GAMMA = 0.99  # no discount since the # of moves it takes to win doesn't matter
 EPS_START = 0.90
 EPS_END = 0.05
-EPS_DECAY = 10**4
 TAU = 0.005
 LR = 1e-4
 
@@ -39,6 +38,7 @@ class DQNAgent(Agent):
         self,
         env: BalatroEnv,
         nn_factory: Callable[[], nn.Module],
+        EPS_DECAY=10**4
     ):
         super().__init__(env)
 
@@ -57,6 +57,7 @@ class DQNAgent(Agent):
         self.memory = ReplayMemory(MEM_SIZE)
         self.eps_threshold = EPS_START
         self.was_last_action_nn = False
+        self.EPS_DECAY = EPS_DECAY
 
         self.steps_done = 0
 
@@ -121,7 +122,7 @@ class DQNAgent(Agent):
         sample = random.random()
         if self.steps_done >= SKIP: # only decrease epsilon when we go over SKIP
             self.eps_threshold = EPS_END + (EPS_START - EPS_END) * \
-                math.exp(-1. * (self.steps_done - SKIP) / EPS_DECAY)
+                math.exp(-1. * (self.steps_done - SKIP) / self.EPS_DECAY)
         self.steps_done += 1
         input = self.convert_state_to_input(state)
         self.was_last_action_nn = sample > self.eps_threshold
@@ -133,6 +134,8 @@ class DQNAgent(Agent):
                 # found, so we pick action with the larger expected reward.
                 # print(pn := self.policy_net(torch.from_numpy(input)))
                 output = self.policy_net(torch.from_numpy(input))
+                if output.shape[-1] != 436:
+                    raise Exception("OUTPUT has invalid shape:", output.shape)
                 if len(output.shape) == 3:
                     p = output[0,0,:].cpu().numpy()
                 else:
@@ -163,7 +166,12 @@ class DQNAgent(Agent):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        state_action_values = self.policy_net(state_batch).unsqueeze(1).gather(2, action_batch)
+        pnout = self.policy_net(state_batch)
+        if pnout.shape[-1] != 436:
+            raise Exception("PNOUT has invalid shape:", pnout.shape)
+        if len(pnout.shape) == 2:
+            pnout = pnout.unsqueeze(1)
+        state_action_values = pnout.gather(2, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
         # Expected values of actions for non_final_next_states are computed based
@@ -172,9 +180,12 @@ class DQNAgent(Agent):
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(BATCH_SIZE).to(device)
         with torch.no_grad():
-            next_state_values[non_final_mask] = self.target_net(
+            tnout = self.target_net(
                 non_final_next_states.to(device)
-            ).max(1).values
+            )
+            if len(tnout.shape) == 3:
+                tnout = tnout.squeeze(1)
+            next_state_values[non_final_mask] = tnout.max(1).values
         # Compute the expected Q values
         expected_state_action_values = (next_state_values * GAMMA) + reward_batch
 
