@@ -6,7 +6,7 @@ from math import comb
 import gymnasium as gym
 import numpy as np
 
-from src.common import Action, ActionType, Card
+from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
 from src.constants import (
     HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
 )
@@ -113,13 +113,19 @@ class BalatroEnv(gym.Env):
             types of rewards """
         agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
         return (
-            self._win_reward() if nxt_state.is_game_over() and self.game_state.did_player_win()
-            # We want the agent to play the best it can, even if it loses
+            self._win_reward() * prev_state.hand_actions
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
             else self._lose_reward() if nxt_state.is_game_over()
-            #else self._lose_reward() + agent_score_difference if nxt_state.is_game_over()
             else 0
-            #else agent_score_difference
         )
+        """
+        return agent_score_difference + (
+            self._win_reward() * prev_state.hand_actions    # multiply by the number of hand actions left over
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
+            else self._lose_reward() if nxt_state.is_game_over()
+            else 0
+        )
+        """
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
