@@ -6,7 +6,7 @@ from math import comb
 import gymnasium as gym
 import numpy as np
 
-from src.common import Action, ActionType, Card
+from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
 from src.constants import (
     HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
 )
@@ -94,6 +94,7 @@ class BalatroEnv(gym.Env):
         initial_scored_chips = self.game_state.scored_chips
 
         act = self.action_index_to_action(action)
+        previous_game_state = self.game_state.copy()
         self.game_state = simulate_turn(
             self.game_state,
             act,
@@ -102,17 +103,29 @@ class BalatroEnv(gym.Env):
 
         terminated = self.game_state.is_game_over()
         truncated = False
-        agent_score_difference = self.game_state.scored_chips - initial_scored_chips
-        reward = (
-            self._win_reward() if terminated and self.game_state.did_player_win()
-            # We want the agent to play the best it can, even if it loses
-            else self._lose_reward() + agent_score_difference if terminated
-            else agent_score_difference
-        )
+        reward = self._calculate_reward(previous_game_state, act, self.game_state)
         observation = self._get_obs()
         info = {"previous_action": act}
-
         return observation, reward, terminated, truncated, info
+
+    def _calculate_reward(self, prev_state, action, nxt_state) -> int:
+        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
+            types of rewards """
+        agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
+        return (
+            self._win_reward() * prev_state.hand_actions
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
+            else self._lose_reward() if nxt_state.is_game_over()
+            else 0
+        )
+        """
+        return agent_score_difference + (
+            self._win_reward() * prev_state.hand_actions    # multiply by the number of hand actions left over
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
+            else self._lose_reward() if nxt_state.is_game_over()
+            else 0
+        )
+        """
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -176,7 +189,7 @@ class BalatroEnv(gym.Env):
         return {}
 
     def _win_reward(self) -> int:
-        return self.game_state.blind_chips * 5
+        return self.game_state.blind_chips * 100
 
     def _lose_reward(self) -> int:
         # NOTE: A lose reward that is really negative punishes the agent too harshly for 

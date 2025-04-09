@@ -4,3 +4,4 @@ black
 pylint
 pytest
 torch
+torchinfo
