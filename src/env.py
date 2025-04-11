@@ -4,6 +4,7 @@ from typing import Any
 from math import comb
 
 import gymnasium as gym
+import torch
 import numpy as np
 
 from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
@@ -201,6 +202,43 @@ class BalatroEnv(gym.Env):
         #       
         #       Let's instead rely on rewards.
         return 0
+
+    @staticmethod
+    def embedding_to_action_index(embedding: list[int]) -> int:
+        """
+        9 bit embedding for a combination
+        """ 
+        assert(len(embedding) == 9)
+        index = 218 if embedding[0] == 1 else 0
+        k = sum(embedding[1:])
+        for i in range(1,k-1):
+            index += comb(8, i)
+        combination = [ind for (ind,v) in enumerate(embedding[1:]) if v == 1]
+        index += BalatroEnv.rank_combination(8, k, combination)
+        return index
+
+    @staticmethod
+    def action_index_to_embedding(action: int) -> list[int]:
+        """
+        9 bit embedding for a combination
+        """ 
+        assert(0 <= action < 436)
+        embedding = [0] * 9
+        action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
+
+        # first bit is ACTION/DISCARD indicator
+        embedding[0] = 1 if action_type == ActionType.DISCARD else 0
+        action %= 218
+        k = 1
+        while action >= comb(8,k):
+            action -= comb(8,k)
+            k += 1
+        c = BalatroEnv.unrank_combination(8,k,action)
+
+        # bits 1-8 indicate played cards
+        for i in c:
+            embedding[i+1] = 1
+        return embedding
 
     def action_index_to_action(self, action: int) -> Action:
         assert(0 <= action < 436)
