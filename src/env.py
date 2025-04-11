@@ -112,7 +112,11 @@ class BalatroEnv(gym.Env):
         """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
             types of rewards """
         agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
-        return (
+        ph = hand_to_scored_hand(action.played_hand).poker_hand
+        ignored_hands = [PokerHand.HIGH_CARD]
+        ignore = ph in ignored_hands
+        delta = 0 if ignore else agent_score_difference
+        return delta + (
             self._win_reward() * prev_state.hand_actions
             if nxt_state.is_game_over() and self.game_state.did_player_win()
             else self._lose_reward() if nxt_state.is_game_over()
