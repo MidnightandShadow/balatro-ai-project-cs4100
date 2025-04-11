@@ -1,5 +1,5 @@
 from src.env import BalatroEnv
-from src.agent.agent import Agent
+from src.agent.nn_agent import NNAgent
 from src.agent.device import device
 from src.agent.replay_memory import ReplayMemory, Transition
 
@@ -33,7 +33,7 @@ EPS_END = 0.05
 TAU = 0.005
 LR = 1e-4
 
-class DQNAgent(Agent):
+class DQNAgent(NNAgent):
     def __init__(
         self,
         env: BalatroEnv,
@@ -60,19 +60,6 @@ class DQNAgent(Agent):
         self.EPS_DECAY = EPS_DECAY
 
         self.steps_done = 0
-
-    def convert_state_to_input(self, state):
-        """ state is 8 + 52 + 1 + 1 + 1 """
-        chips_left = state["chips_left"]
-        hand_actions = state["hand_actions"]
-        discard_actions = state["discard_actions"]
-        deck = state["deck"]
-        hand_size, rank = state["observable_hand"]
-        observable_hand = self.env.unrank_combination(52, hand_size, rank)
-        return np.concatenate(
-            (observable_hand, deck, [hand_actions], [discard_actions], chips_left),
-            dtype=np.float32
-        ).reshape((1,-1))
 
     def update(
         self,
@@ -208,6 +195,3 @@ class DQNAgent(Agent):
         if torch.cuda.is_available():
             gc.collect()
             torch.cuda.empty_cache()
-
-
-

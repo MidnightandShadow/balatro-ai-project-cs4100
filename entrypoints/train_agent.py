@@ -9,8 +9,10 @@ from torchinfo import summary
 
 from src.referee import *
 from src.agent.nn.card_embedding import CardEmbedding
+from src.agent.nn.positional_encoding import PositionalEncoding
 from src.agent.nn.select import Select
 from src.agent.nn.range import Range
+from src.agent.nn.unsqueeze import Unsqueeze
 from src.common import *
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
@@ -59,13 +61,13 @@ def main():
     ), EPS_DECAY=10**5)
     """
     agent = DQNAgent(env, lambda: nn.Sequential(
-        CardEmbedding(0, 8, 63, emb_dim=450),
-        nn.TransformerEncoderLayer(450, 25),
-        Select(1),
-        nn.Flatten(),
-        Range(0,436),
+        nn.Linear(63, 436),
+        nn.LayerNorm((436,)),
+        nn.Linear(436, 436),
+        nn.LayerNorm((436,)),
+        nn.Linear(436, 436),
     ), EPS_DECAY=10**5)
-    summary(agent.policy_net, (1,63))
+    summary(agent.policy_net, (1,1,63))
     print("\n")
     win_counter = 0
     avg_score_chips = 70        # estimate
@@ -183,5 +185,5 @@ if __name__ == "__main__":
         #if POLICY_NET != None:
         #    if input("Would you like to save the NN? [Y/n] ") in ["yes", "y", "Y", ""]:
         #       torch.save(POLICY_NET.state_dict(), input("path: "))
-        torch.save(POLICY_NET.state_dict(), "model.bin")
+        torch.save(POLICY_NET.state_dict(), "model.chk")
 
