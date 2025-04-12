@@ -6,6 +6,9 @@ import torch
 
 from src.env import BalatroEnv
 
+MODEL_DIR_PATH = "models"
+DECODER_PATH = f"{MODEL_DIR_PATH}/decoder.pth"
+
 def main():
     X = torch.zeros((436,9))
     for i in range(436):
@@ -21,9 +24,6 @@ def main():
         nn.Linear(436,436),
     )
 
-    print(X)
-    print(y)
-
     loss_fn = nn.MSELoss()
     for iteration in range(10_000):
         optimizer = torch.optim.AdamW(decoder.parameters())
@@ -36,7 +36,10 @@ def main():
         loss.backward()
         optimizer.step()
 
-    print(torch.argmax(decoder(X), dim=1))
+    print(s := torch.argmax(decoder(X), dim=1))
+    correct = sum(1 if i == v.item() else 0 for i, v in enumerate(s))
+    print("Num correct:", correct, "/ 436")
+    torch.save(decoder, DECODER_PATH)
 
 
 

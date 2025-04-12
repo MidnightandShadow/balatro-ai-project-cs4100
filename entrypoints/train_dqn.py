@@ -1,6 +1,5 @@
 # Not sure how to get rid of this... lmk if someone finds a workaround
 import sys
-
 sys.path.extend([".", "./src"])
 
 import torch
@@ -8,11 +7,6 @@ import torch.nn as nn
 from torchinfo import summary
 
 from src.referee import *
-from src.agent.nn.card_embedding import CardEmbedding
-from src.agent.nn.positional_encoding import PositionalEncoding
-from src.agent.nn.select import Select
-from src.agent.nn.range import Range
-from src.agent.nn.unsqueeze import Unsqueeze
 from src.common import *
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
@@ -60,12 +54,23 @@ def main():
         nn.Linear(63, 436),
     ), EPS_DECAY=10**5)
     """
+
+    # source: autoencoder/decoder.py
+    decoder = torch.load("models/decoder.pth", weights_only=False)
     agent = DQNAgent(env, lambda: nn.Sequential(
-        nn.Linear(63, 436),
-        nn.LayerNorm((436,)),
-        nn.Linear(436, 436),
-        nn.LayerNorm((436,)),
-        nn.Linear(436, 436),
+        nn.Linear(63,20),
+        nn.LayerNorm(20),
+
+        nn.Linear(20,20),
+        nn.LayerNorm(20),
+        nn.Linear(20,20),
+        nn.LayerNorm(20),
+        nn.Linear(20,20),
+        nn.LayerNorm(20),
+
+        nn.Linear(20,9),
+        nn.Sigmoid(),
+        decoder,
     ), EPS_DECAY=10**5)
     summary(agent.policy_net, (1,1,63))
     print("\n")
