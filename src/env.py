@@ -4,7 +4,6 @@ from typing import Any
 from math import comb
 
 import gymnasium as gym
-import torch
 import numpy as np
 
 from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand

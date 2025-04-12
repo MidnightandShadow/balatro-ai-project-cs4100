@@ -26,7 +26,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 TransitionValue = namedtuple(
-    'Transition', ('state', 'action', 'next_state', 'probs', 'reward', 'state_value')
+    'Transition', ('state', 'action', 'next_state', 'logprobs', 'reward', 'state_value')
 )
 
 class ReplayValueMemory(object):
