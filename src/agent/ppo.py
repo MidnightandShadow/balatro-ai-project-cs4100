@@ -22,16 +22,22 @@ EPS_END = 0.05
 TAU = 0.005
 LR = 1e-4
 
-class PPOAgent(NNAgent):
-    def __init__(self, env, actor_factory, value_factory, EPS_DECAY=10**-4):
+class PPOAgent:
+    def __init__(self, env, actor_factory, actor_critic_factory, EPS_CLIP=10**-4):
         self.env = env
-        self.policy = actor_factory().to(device)
-        self.value = value_factory().to(device)
+        self.actor = actor_factory().to(device)
+        self.critic = actor_critic_factory().to(device)
         self.memory = ReplayValueMemory(CAPACITY)
         self.gamma = 0.99
-        self.EPS_DECAY = EPS_DECAY
         self.training_sessions = 2000
+        self.mse_loss = torch.nn.MSELoss()
         self.steps_done = 0
+        self.eps_clip = EPS_CLIP
+        self.optimizer = torch.optim.AdamW(
+            list(self.actor.parameters()) + list(self.critic.parameters())
+        )
+        self.value_loss_coef = 0.5
+        self.entropy_coef = 0.5
         
 
     def update(
@@ -42,39 +48,37 @@ class PPOAgent(NNAgent):
         reward_f: float,
         terminated: bool,
         next_state, # obs
-        state_val: float,
     ):
         reward = torch.tensor([reward_f])
 
         # convert to input type
-        cur_state = self.convert_state_to_input(cur_state)
-        next_state = self.convert_state_to_input(next_state)
+        cur_state = torch.from_numpy(NNAgent.convert_state_to_input(cur_state))
+        next_state = torch.from_numpy(NNAgent.convert_state_to_input(next_state))
 
         if terminated:
             next_state = None
         else:
             next_state = torch.tensor(
                 cur_state, dtype=torch.float32
-            ).unsqueeze(0)
+            )
+
+        state_val = self.critic(cur_state)
 
         assert(reward is not None)
         # Store the transition in memory
         self.memory.push(
-            torch.tensor(cur_state, dtype=torch.float32).unsqueeze(0), 
-            torch.tensor([[[action]]], dtype=torch.long),
+            torch.tensor(cur_state, dtype=torch.float32), 
+            torch.tensor([action], dtype=torch.long),
+            next_state,
             log_prob,
             reward,
-            next_state,
             state_val,
         )
 
-        # Perform one step of the optimization (on the policy network) IF we exceed SKIP
-        if self.steps_done >= SKIP:
-            self.optimize_model()
-
     def get_action_and_value(self, state) -> tuple[tuple[int, float], float]:
-        input = self.convert_state_to_input(state)
-        output = self.policy(torch.from_numpy(input))
+        """ (action, log_prob), value """
+        input = NNAgent.convert_state_to_input(state)
+        output = self.actor(torch.from_numpy(input))
         if output.shape[-1] != 436:
             raise Exception("OUTPUT has invalid shape:", output.shape)
 
@@ -85,13 +89,14 @@ class PPOAgent(NNAgent):
                 p = output[0,:].cpu().numpy()
             ind = np.argmax(p).item()
             self.steps_done += 1
-            return (ind, np.log(p[ind])), self.value(torch.from_numpy(input)).item() # type: ignore
+            return (ind, np.log(p[ind])), self.critic(torch.from_numpy(input)).item() # type: ignore
 
 
     def get_action(self, state) -> int:
         return self.get_action_and_value(state)[0][0]
 
     def discounted_returns(self, batch):
+        """ Truncated version of GAE """
         transitions = TransitionValue(*zip(*batch))
         returns = []
         discounted_reward = 0
@@ -103,58 +108,49 @@ class PPOAgent(NNAgent):
             discounted_reward = reward + self.gamma * discounted_reward
             returns.insert(0, discounted_reward)
         returns = np.array(returns)
-        print(returns)
         returns = torch.flatten(torch.from_numpy(returns).float()).to(device)
-        print(returns.shape)
-        return list(transitions.state), list(transitions.action), returns, list(transitions.state_value)
-
-    def evaluate_actions(self, states, actions):
-        pass
+        return returns
 
     def optimize_model(self):
-        # print(len(self.buffer.rewards))
+        """ batching data """
+        if len(self.memory) < BATCH_SIZE:
+            return
+
         batch = self.memory.sample(BATCH_SIZE)
-        states, actions, rewards, state_vals = self.discounted_returns(batch)
-        # print(len(rewards_to_go))
+        transitions = TransitionValue(*zip(*batch))
+        discounted_rewards = self.discounted_returns(batch)
 
-        #states = torch.from_numpy(np.array(self.buffer.states)).float().to(device)
-        #actions = torch.from_numpy(np.array(self.buffer.actions)).float().to(device)
-        #old_logprobs = torch.from_numpy(np.array(self.buffer.logprobs)).float().to(device)
-        #state_vals = torch.from_numpy(np.array(self.buffer.state_values)).float().to(device)
+        state_vals = torch.tensor(transitions.state_value)
+        advantages = discounted_rewards - state_vals
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6) 
 
-        # print('stage-0:', rewards_to_go.shape, state_vals.shape)
-        # print('stage-1:', rewards_to_go.device, state_vals.device)
-        state_vals = TransitionValue(*zip(*batch)).state
-        print(state_vals)
-        advantages = rewards - state_vals
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6)
+        ITERATIONS = 1000
+        for i in range(ITERATIONS):
+            # (B, 436)
 
-        
+            action_probabilities = self.actor(torch.cat(transitions.state, dim=0))
+            action_probabilities = action_probabilities[:,transitions.action]
+            actor_log_probs = torch.log(action_probabilities)
 
-        for _ in range(self.training_sessions):
-            # generate random indices for minibatch
-            indices = np.random.permutation(len(self.memory))
+            old_log_probs = torch.tensor(transitions.logprobs)
 
-            # evaluate old actions and values
-            state_values, logprobs, dist_entropy = self.evaluate_actions(states, actions)
-            print(logprobs.shape, batch_old_logprobs.shape)
+            ratios = torch.exp(actor_log_probs - old_log_probs)
 
-            # Finding the ratio (pi_theta / pi_theta_old)
-            ratios = torch.exp(logprobs - batch_old_logprobs.squeeze(-1))
+            # Finding L^{CLIP} inner min LHS and RHS
+            surr1 = ratios * advantages
+            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
-            # Finding Surrogate Loss
-            # print(ratios.shape, batch_advantages.shape)
-            surr1 = ratios * batch_advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * batch_advantages
+            # Calculating -L^{CLIP} => it is negative because we want adam to optimize
+            l_clip = -torch.min(surr1, surr2).mean()
 
-            # final loss of clipped objective PPO
-            actor_loss = -torch.min(surr1, surr2).mean()
-            # print(state_values.dtype, batch_rewards_to_go.dtype)
-            critic_loss = 0.5 * self.mse_loss(state_values.squeeze(), batch_rewards_to_go)
-            loss = actor_loss + self.value_loss_coef * critic_loss - self.entropy_coef * dist_entropy.mean()
-            # print("Final loss:", actor_loss, critic_loss, dist_entropy, loss)
+            state_values = torch.tensor(transitions.state_value)
+            critic_loss = self.mse_loss(state_values, discounted_rewards)
 
-            # calculate gradients and backpropagate for actor network
+            # entropy.shape: (B,)
+            entropy = torch.sum(action_probabilities * torch.log(action_probabilities), dim=-1)
+
+            loss = l_clip + self.value_loss_coef * critic_loss - self.entropy_coef * entropy.mean()
+
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
