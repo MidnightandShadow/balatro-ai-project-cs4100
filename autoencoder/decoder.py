@@ -32,7 +32,7 @@ def main():
     )
 
     loss_fn = nn.MSELoss()
-    for iteration in range(10_000):
+    for iteration in range(1000):
         optimizer = torch.optim.AdamW(decoder.parameters())
 
         y_predictions = decoder(X)

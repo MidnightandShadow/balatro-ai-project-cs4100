@@ -60,17 +60,23 @@ def main():
 
     # source: autoencoder/decoder.py
     decoder = torch.load("models/decoder.pth", weights_only=False)
+    # Since we have already trained the decoder's parameters, we don't need to retrain
+    for c in decoder.parameters():
+        c.requires_grad = False
+
     agent = DQNAgent(env, lambda: nn.Sequential(
         CardEmbedding(0,8,63),
-        PositionalEncoding(18),
 
         # Transformer
-        nn.TransformerEncoderLayer(18,18),
+        nn.TransformerEncoderLayer(26,26),
+        nn.TransformerEncoderLayer(26,26),
+        nn.TransformerEncoderLayer(26,26),
+        nn.TransformerEncoderLayer(26,26),
 
         Select(1),
         nn.Flatten(),
 
-        nn.Linear(18,9),
+        nn.Linear(26,16),
         nn.Sigmoid(),
         decoder,
     ), EPS_DECAY=10**4)
