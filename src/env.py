@@ -122,14 +122,6 @@ class BalatroEnv(gym.Env):
             else self._lose_reward() if nxt_state.is_game_over()
             else 0
         )
-        """
-        return agent_score_difference + (
-            self._win_reward() * prev_state.hand_actions    # multiply by the number of hand actions left over
-            if nxt_state.is_game_over() and self.game_state.did_player_win()
-            else self._lose_reward() if nxt_state.is_game_over()
-            else 0
-        )
-        """
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -203,30 +195,20 @@ class BalatroEnv(gym.Env):
         return 0
 
     @staticmethod
-    def embedding_to_action_index(embedding: list[int]) -> int:
-        """
-        9 bit embedding for a combination
-        """ 
-        assert(len(embedding) == 9)
-        index = 218 if embedding[0] == 1 else 0
-        k = sum(embedding[1:])
-        for i in range(1,k-1):
-            index += comb(8, i)
-        combination = [ind for (ind,v) in enumerate(embedding[1:]) if v == 1]
-        index += BalatroEnv.rank_combination(8, k, combination)
-        return index
-
-    @staticmethod
     def action_index_to_embedding(action: int) -> list[int]:
         """
-        9 bit embedding for a combination
+        18 bit embedding for a combination
+
+        CHANGELOG:
+            The 9 bit representation isn't great because it forces the model to 
+            learn the difference between an embedding where the action bit is ON vs 
+            when it is OFF. It is better if we have two distinct 8-bit sections for 
+            hand action vs discard action.
         """ 
         assert(0 <= action < 436)
-        embedding = [0] * 9
-        action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
+        embedding = [0] * 16
+        index_offset = 0 if action < 218 else 8
 
-        # first bit is ACTION/DISCARD indicator
-        embedding[0] = 1 if action_type == ActionType.DISCARD else 0
         action %= 218
         k = 1
         while action >= comb(8,k):
@@ -234,9 +216,8 @@ class BalatroEnv(gym.Env):
             k += 1
         c = BalatroEnv.unrank_combination(8,k,action)
 
-        # bits 1-8 indicate played cards
         for i in c:
-            embedding[i+1] = 1
+            embedding[index_offset+i] = 1
         return embedding
 
     def action_index_to_action(self, action: int) -> Action:

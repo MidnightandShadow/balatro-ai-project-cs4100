@@ -7,20 +7,22 @@ import torch
 from src.env import BalatroEnv
 from src.agent.device import device
 
+EMB_DIM = 16
+
 def main():
     """
-    9-bit internal representation for a played hand 
+    18-bit internal representation for a played hand 
     """
     print(f"Using {device} device")
 
     encoder = nn.Sequential(
-        nn.Linear(436, 9)
+        nn.Linear(436, EMB_DIM)
     )
 
     X = torch.zeros((436, 436))
     for i in range(436):
         X[i,i] = 1
-    y = torch.zeros((436, 9))
+    y = torch.zeros((436, EMB_DIM))
     for i in range(436):
         y[i] = torch.tensor(BalatroEnv.action_index_to_embedding(i))
 

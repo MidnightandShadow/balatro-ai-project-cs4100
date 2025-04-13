@@ -9,8 +9,14 @@ from src.env import BalatroEnv
 MODEL_DIR_PATH = "models"
 DECODER_PATH = f"{MODEL_DIR_PATH}/decoder.pth"
 
+EMB_DIM = 16
+
 def main():
-    X = torch.zeros((436,9))
+    """
+    9-bit representation is bad because the model needs to learn that a 8-bit combination 
+    means different actions when the last ACTION/DISCARD bit is on vs off.
+    """
+    X = torch.zeros((436,16))
     for i in range(436):
         X[i] = torch.tensor(BalatroEnv.action_index_to_embedding(i))
 
@@ -19,7 +25,8 @@ def main():
         y[i,i] = 1
 
     decoder = nn.Sequential(
-        nn.Linear(9,436),
+        nn.Linear(16,436),
+        nn.Linear(436,436),
         nn.Linear(436,436),
         nn.Linear(436,436),
     )
