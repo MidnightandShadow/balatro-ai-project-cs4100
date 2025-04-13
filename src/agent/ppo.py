@@ -23,12 +23,12 @@ TAU = 0.005
 LR = 1e-4
 
 class PPOAgent:
-    def __init__(self, env, actor_factory, actor_critic_factory, EPS_CLIP=10**-4):
+    def __init__(self, env, actor_factory, actor_critic_factory, EPS_CLIP=0.2):
         self.env = env
         self.actor = actor_factory().to(device)
         self.critic = actor_critic_factory().to(device)
         self.memory = ReplayValueMemory(CAPACITY)
-        self.gamma = 0.99
+        self.gamma = 0.95
         self.training_sessions = 2000
         self.mse_loss = torch.nn.MSELoss()
         self.steps_done = 0
@@ -124,7 +124,7 @@ class PPOAgent:
         advantages = discounted_rewards - state_vals
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6) 
 
-        ITERATIONS = 1000
+        ITERATIONS = 100
         for i in range(ITERATIONS):
             # (B, 436)
 

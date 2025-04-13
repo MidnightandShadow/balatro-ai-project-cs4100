@@ -2,6 +2,7 @@ import sys
 
 sys.path.extend([".", "./src"])
 
+import torch
 import torch.nn as nn
 from torchinfo import summary
 
@@ -53,9 +54,10 @@ def main():
         nn.Linear(63, 436),
     ), EPS_DECAY=10**5)
     """
+    decoder = torch.load("models/decoder.pth", weights_only=False)
     agent = PPOAgent(
         env, 
-        lambda: nn.Linear(63, 436),
+        lambda: nn.Sequential(nn.Linear(63, 16), decoder),
         lambda: nn.Linear(63, 1)
     )
     summary(agent.actor, (1,63))
