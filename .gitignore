@@ -88,3 +88,7 @@ __pypackages__/
 
 *.swp
 env/
+model.bin
+model.chk
+models/
+temp_ib/

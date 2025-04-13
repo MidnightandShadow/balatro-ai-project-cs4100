@@ -6,14 +6,13 @@ from math import comb
 import gymnasium as gym
 import numpy as np
 
-from src.common import Action, ActionType, Card
+from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
 from src.constants import (
     HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
 )
 from src.game_state import GameState, generate_deck
 from src.observer_manager import ObserverManager
-from src.player import Player
-from src.simulator import simulate_turn, simulate_game
+from src.simulator import simulate_turn
 
 MAX_CHIPS = 100_000
 
@@ -95,6 +94,7 @@ class BalatroEnv(gym.Env):
         initial_scored_chips = self.game_state.scored_chips
 
         act = self.action_index_to_action(action)
+        previous_game_state = self.game_state.copy()
         self.game_state = simulate_turn(
             self.game_state,
             act,
@@ -103,39 +103,25 @@ class BalatroEnv(gym.Env):
 
         terminated = self.game_state.is_game_over()
         truncated = False
-        agent_score_difference = self.game_state.scored_chips - initial_scored_chips
-        reward = (
-            self._win_reward() if terminated and self.game_state.did_player_win()
-            # We want the agent to play the best it can, even if it loses
-            else self._lose_reward() + agent_score_difference if terminated
-            else agent_score_difference
-        )
+        reward = self._calculate_reward(previous_game_state, act, self.game_state)
         observation = self._get_obs()
         info = {"previous_action": act}
-
         return observation, reward, terminated, truncated, info
 
-    def simulate_single_turn(self, action: int):
-        """
-        Simulates a game from the current state for one turn based on the given action_space action,
-        relying solely on the simulator. That is, this does not affect the current step of this env.
-        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
-        the environment because MCTS plans online and relies on a simulator.
-
-        :return: true if the game resulted in a win, false otherwise
-        """
-        return simulate_turn(self.game_state, self.action_index_to_action(action), self.observer_manager)
-
-    def simulate_till_finished(self, game_state: GameState, player: Player):
-        """
-        Simulates a game from the given game_state until the end of the game, relying solely on the simulator.
-        That is, this does not affect the current step of this env.
-        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
-        the environment because MCTS plans online and relies on a simulator.
-
-        :return: true if the game resulted in a win, false otherwise
-        """
-        return simulate_game(game_state, player, self.observer_manager)
+    def _calculate_reward(self, prev_state, action, nxt_state) -> int:
+        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
+            types of rewards """
+        agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
+        ph = hand_to_scored_hand(action.played_hand).poker_hand
+        ignored_hands = [PokerHand.HIGH_CARD]
+        ignore = ph in ignored_hands
+        delta = 0 if ignore else agent_score_difference
+        return (
+            self._win_reward() * prev_state.hand_actions
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
+            else self._lose_reward() if nxt_state.is_game_over()
+            else 0
+        )
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -199,7 +185,7 @@ class BalatroEnv(gym.Env):
         return {}
 
     def _win_reward(self) -> int:
-        return self.game_state.blind_chips * 5
+        return self.game_state.blind_chips * 100
 
     def _lose_reward(self) -> int:
         # NOTE: A lose reward that is really negative punishes the agent too harshly for 
@@ -207,6 +193,32 @@ class BalatroEnv(gym.Env):
         #       
         #       Let's instead rely on rewards.
         return 0
+
+    @staticmethod
+    def action_index_to_embedding(action: int) -> list[int]:
+        """
+        18 bit embedding for a combination
+
+        CHANGELOG:
+            The 9 bit representation isn't great because it forces the model to 
+            learn the difference between an embedding where the action bit is ON vs 
+            when it is OFF. It is better if we have two distinct 8-bit sections for 
+            hand action vs discard action.
+        """ 
+        assert(0 <= action < 436)
+        embedding = [0] * 16
+        index_offset = 0 if action < 218 else 8
+
+        action %= 218
+        k = 1
+        while action >= comb(8,k):
+            action -= comb(8,k)
+            k += 1
+        c = BalatroEnv.unrank_combination(8,k,action)
+
+        for i in c:
+            embedding[index_offset+i] = 1
+        return embedding
 
     def action_index_to_action(self, action: int) -> Action:
         assert(0 <= action < 436)

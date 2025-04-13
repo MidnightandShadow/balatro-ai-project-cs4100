@@ -2,19 +2,42 @@
 import sys
 sys.path.extend([".", "./src"])
 
+import torch
+import torch.nn as nn
+from torchinfo import summary
+
 from src.referee import *
 from src.common import *
+from src.agent.nn.card_embedding import CardEmbedding
+from src.agent.nn.select import Select
+from src.agent.nn.positional_encoding import PositionalEncoding
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
-from src.agent.policy_nn import DQNAgent
+from src.agent.dqn import DQNAgent
 
-NUM_GAMES = 100_000
-INVALID_ACTION_PUNISHMENT = -10
+NUM_GAMES = 1_000_000
+INVALID_ACTION_PUNISHMENT = -100
+FREQ_MAP_MAX = 20_000
 PRECISION = 3
 DISCARD = "DISCARD"
+POLICY_NET = None
 
 def clamp(n, l, h):
     return max(min(n, h), l)
+
+def freq_len(freq_map):
+    tot = 0
+    for k in freq_map:
+        tot += freq_map[k]
+    return tot
+
+def freq_half(freq_map):
+    tot = 0
+    for k in freq_map:
+        tot += freq_map[k]
+    if FREQ_MAP_MAX < tot:
+        for k in freq_map:
+            freq_map[k] //= 2
 
 def freq_to_prob(freq_map):
     tot = 0
@@ -22,15 +45,40 @@ def freq_to_prob(freq_map):
         tot += freq_map[k]
     return {k: round(100*freq_map[k]/tot, PRECISION) for k in freq_map}
 
-if __name__ == "__main__":
+def main():
+    global POLICY_NET
+
     manager = ObserverManager()
-    #manager.add_observer(PlayerObserver())
     env = BalatroEnv(INITIAL_GAME_STATE, manager)
-    agent = DQNAgent(env)
+    # in dimension is 63, out dimension is 436
+    """
+    LINEAR:
+    agent = DQNAgent(env, lambda: nn.Sequential(
+        nn.Linear(63, 436),
+    ), EPS_DECAY=10**5)
+    """
+
+    # source: autoencoder/decoder.py
+    decoder = torch.load("models/decoder.pth", weights_only=False)
+    agent = DQNAgent(env, lambda: nn.Sequential(
+        CardEmbedding(0,8,63),
+        PositionalEncoding(18),
+
+        # Transformer
+        nn.TransformerEncoderLayer(18,18),
+
+        Select(1),
+        nn.Flatten(),
+
+        nn.Linear(18,9),
+        nn.Sigmoid(),
+        decoder,
+    ), EPS_DECAY=10**4)
+    summary(agent.policy_net, (1,1,63))
+    print("\n")
     win_counter = 0
     avg_score_chips = 70        # estimate
     ALPHA = 0.001
-    LOW = 0.0001
     HIGH = 0.001
     avg_reward_per_hand = 10    # estimate
 
@@ -40,7 +88,7 @@ if __name__ == "__main__":
     rand_discards, rand_actions = 0, 0
     rand_hand_freq = {}
 
-    PRINT_FREQ = 50
+    PRINT_FREQ = 1
 
     def print_if(game_num, *args, **kwargs):
         if game_num % PRINT_FREQ == 0:
@@ -73,13 +121,6 @@ if __name__ == "__main__":
                     rand_actions += 1
                 if agent_was_random and info["previous_action"].action_type == ActionType.DISCARD:
                     rand_discards += 1
-                """ 
-                elif agent_was_random and info["previous_action"].action_type == ActionType.DISCARD:
-                    hand_types.append(DISCARD)
-                    if DISCARD not in rand_hand_freq:
-                        rand_hand_freq[DISCARD] = 0
-                    rand_hand_freq[DISCARD] += 1
-                """
 
 
                 # Collect "NN Agent" Statistics
@@ -89,14 +130,12 @@ if __name__ == "__main__":
                         nn_hand_freq[scored_hand] = 0
                     nn_hand_freq[scored_hand] += 1
                     hand_types.append(scored_hand)
-                    avg_reward_per_hand = (1-HIGH) * avg_reward_per_hand + HIGH * reward
-                """
-                elif agent.was_last_action_nn and info["previous_action"].action_type == ActionType.DISCARD:
-                    hand_types.append(DISCARD)
-                    if DISCARD not in nn_hand_freq:
-                        nn_hand_freq[DISCARD] = 0
-                    nn_hand_freq[DISCARD] += 1
-                """
+                    avg_reward_per_hand = clamp(
+                        (1-HIGH) * avg_reward_per_hand + HIGH * reward,
+                        avg_reward_per_hand - 1,
+                        avg_reward_per_hand + 1
+                    )
+
                 if agent.was_last_action_nn:
                     nn_actions += 1
                 if agent.was_last_action_nn and info["previous_action"].action_type == ActionType.DISCARD:
@@ -122,11 +161,36 @@ if __name__ == "__main__":
         print_if(game_num, f"{hand_types = }")
         print_if(game_num, f"{freq_to_prob(nn_hand_freq) = }")
         print_if(game_num, f"{freq_to_prob(rand_hand_freq) = }")
+        print_if(game_num, f"{freq_len(nn_hand_freq) = }")
+        print_if(game_num, f"{freq_len(rand_hand_freq) = }")
         print_if(game_num, f"nn_discard_prob = {round(100*nn_discards/(nn_actions+1), PRECISION)}%")
         print_if(game_num, f"rand_discard_prob = {round(100*rand_discards/(rand_actions+1), PRECISION)}%")
         print_if(game_num)
 
         if avg_score_chips == 0: 
             avg_score_chips = env.game_state.scored_chips
-        avg_score_chips = (1-ALPHA)*avg_score_chips + ALPHA*(env.game_state.scored_chips)
-        ALPHA = clamp((env.game_state.scored_chips - avg_score_chips)/avg_score_chips, LOW, HIGH)
+        # A maximum increase of 1 is allowed
+        avg_score_chips = clamp(
+            (1-ALPHA)*avg_score_chips + ALPHA*(env.game_state.scored_chips),
+            avg_score_chips - 1,
+            avg_score_chips + 1
+        )
+
+        freq_half(nn_hand_freq)
+        freq_half(rand_hand_freq)
+
+        POLICY_NET = agent.policy_net
+
+        if game_num % 10 == 0:
+            torch.save(POLICY_NET.state_dict(), "model.chk")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Saving...")
+        #if POLICY_NET != None:
+        #    if input("Would you like to save the NN? [Y/n] ") in ["yes", "y", "Y", ""]:
+        #       torch.save(POLICY_NET.state_dict(), input("path: "))
+        torch.save(POLICY_NET, "model.chk")
+
