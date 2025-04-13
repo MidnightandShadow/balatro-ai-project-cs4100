@@ -8,6 +8,9 @@ from torchinfo import summary
 
 from src.referee import *
 from src.common import *
+from src.agent.nn.card_embedding import CardEmbedding
+from src.agent.nn.select import Select
+from src.agent.nn.positional_encoding import PositionalEncoding
 from src.simulator import IllegalActionException
 from src.env import BalatroEnv
 from src.agent.dqn import DQNAgent
@@ -58,20 +61,19 @@ def main():
     # source: autoencoder/decoder.py
     decoder = torch.load("models/decoder.pth", weights_only=False)
     agent = DQNAgent(env, lambda: nn.Sequential(
-        nn.Linear(63,20),
-        nn.LayerNorm(20),
+        CardEmbedding(0,8,63),
+        PositionalEncoding(18),
 
-        nn.Linear(20,20),
-        nn.LayerNorm(20),
-        nn.Linear(20,20),
-        nn.LayerNorm(20),
-        nn.Linear(20,20),
-        nn.LayerNorm(20),
+        # Transformer
+        nn.TransformerEncoderLayer(18,18),
 
-        nn.Linear(20,9),
+        Select(1),
+        nn.Flatten(),
+
+        nn.Linear(18,9),
         nn.Sigmoid(),
         decoder,
-    ), EPS_DECAY=10**5)
+    ), EPS_DECAY=10**4)
     summary(agent.policy_net, (1,1,63))
     print("\n")
     win_counter = 0
@@ -190,5 +192,5 @@ if __name__ == "__main__":
         #if POLICY_NET != None:
         #    if input("Would you like to save the NN? [Y/n] ") in ["yes", "y", "Y", ""]:
         #       torch.save(POLICY_NET.state_dict(), input("path: "))
-        torch.save(POLICY_NET.state_dict(), "model.chk")
+        torch.save(POLICY_NET, "model.chk")
 
