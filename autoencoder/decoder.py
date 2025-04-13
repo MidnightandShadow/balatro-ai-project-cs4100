@@ -16,7 +16,7 @@ def main():
     9-bit representation is bad because the model needs to learn that a 8-bit combination 
     means different actions when the last ACTION/DISCARD bit is on vs off.
     """
-    X = torch.zeros((436,16))
+    X = torch.zeros((436,EMB_DIM))
     for i in range(436):
         X[i] = torch.tensor(BalatroEnv.action_index_to_embedding(i))
 
@@ -25,7 +25,7 @@ def main():
         y[i,i] = 1
 
     decoder = nn.Sequential(
-        nn.Linear(16,436),
+        nn.Linear(EMB_DIM,436),
         nn.Linear(436,436),
         nn.Linear(436,436),
         nn.Linear(436,436),
