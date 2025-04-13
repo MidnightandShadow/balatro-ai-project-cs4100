@@ -23,6 +23,6 @@ class CardEmbedding(nn.Module):
         xs = x[:,0,self.range_min:self.range_max].type(torch.int)
         out = torch.ones((x.shape[0],self.in_dim,self.emb_dim)).to(device)
         out[:,self.range_min:self.range_max,:18] = self.card_buffer[xs]
-        out[:,:self.range_min,:] *= x[:,:,:self.range_min].swapaxes(1,2)
-        out[:,self.range_max:self.in_dim,:] *= x[:,:,self.range_max:self.in_dim].swapaxes(1,2)
+        out[:,:self.range_min,:] *= x[:,:,:self.range_min].swapaxes(1,2).to(device)
+        out[:,self.range_max:self.in_dim,:] *= x[:,:,self.range_max:self.in_dim].swapaxes(1,2).to(device)
         return out
