@@ -7,9 +7,7 @@ import gymnasium as gym
 import numpy as np
 
 from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
-from src.constants import (
-    HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
-)
+from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS
 from src.game_state import GameState, generate_deck
 from src.observer_manager import ObserverManager
 from src.simulator import simulate_turn
@@ -23,13 +21,14 @@ TODO:
 
 """
 
+
 class BalatroEnv(gym.Env):
     """
     Represents our Balatro GameState as an AI environment following the gymnasium Env
     interface. Assumes src.constants.OBSERVABLE_HAND_SIZE = 8.
     """
 
-    # TODO: pass in a GameStateFactory, then call factory.create to create a new 
+    # TODO: pass in a GameStateFactory, then call factory.create to create a new
     #       GameState.
     def __init__(self, game_state: GameState, observer_manager: ObserverManager):
         self.game_state = game_state
@@ -38,18 +37,18 @@ class BalatroEnv(gym.Env):
         self.observation_space = gym.spaces.Dict(
             {
                 "chips_left": gym.spaces.Box(low=0, high=MAX_CHIPS, dtype=np.int64),
-                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS+1),
-                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS+1),
+                "hand_actions": gym.spaces.Discrete(HAND_ACTIONS + 1),
+                "discard_actions": gym.spaces.Discrete(DISCARD_ACTIONS + 1),
                 "deck": gym.spaces.MultiBinary(NUM_CARDS),
                 "observable_hand": gym.spaces.OneOf(
                     [
-                        # Generally we will have 8 cards in our observable hand, 
+                        # Generally we will have 8 cards in our observable hand,
                         # but we could have fewer...
                         # 0 observable cards indicates a game over...
                         gym.spaces.Discrete(comb(NUM_CARDS, hand_size))
                         for hand_size in range(0, 9)
                     ]
-                )
+                ),
             }
         )
 
@@ -109,23 +108,22 @@ class BalatroEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def _calculate_reward(self, prev_state, action, nxt_state) -> int:
-        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
-            types of rewards """
+        """TODO move this into a `RewardStrategy` class so that we can abstract over multiple
+        types of rewards"""
         agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
         ph = hand_to_scored_hand(action.played_hand).poker_hand
         ignored_hands = [PokerHand.HIGH_CARD]
         ignore = ph in ignored_hands
         delta = 0 if ignore else agent_score_difference
-        return delta + (
+        return agent_score_difference + (
             self._win_reward() * prev_state.hand_actions
             if nxt_state.is_game_over() and self.game_state.did_player_win()
-            else self._lose_reward() if nxt_state.is_game_over()
-            else 0
+            else self._lose_reward() if nxt_state.is_game_over() else 0
         )
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
-    def unrank_combination(n : int, k : int, index: int) -> list[int]:
+    def unrank_combination(n: int, k: int, index: int) -> list[int]:
         combination = []
         start = 0  # Smallest number to consider
         for i in range(k, 0, -1):
@@ -139,9 +137,9 @@ class BalatroEnv(gym.Env):
         return combination
 
     @staticmethod
-    def rank_combination(n : int, k: int, combination : list[int]) -> int:
+    def rank_combination(n: int, k: int, combination: list[int]) -> int:
         combination = combination.copy()
-        combination.sort() # remember to sort the combination before ranking
+        combination.sort()  # remember to sort the combination before ranking
         index = 0
         start = 0  # Smallest number to consider
         for i, c in enumerate(combination):
@@ -157,7 +155,7 @@ class BalatroEnv(gym.Env):
         deck = np.array([0] * NUM_CARDS, dtype=np.int8)
         card_indices = [c.to_int() for c in self.game_state.deck]
         deck[np.array(card_indices)] = 1
-        
+
         observable_hand = [c.to_int() for c in self.game_state.observable_hand]
         observable_hand_index = self.rank_combination(
             NUM_CARDS, len(observable_hand), observable_hand
@@ -172,8 +170,8 @@ class BalatroEnv(gym.Env):
             "deck": deck,
             "observable_hand": (
                 np.int64(len(observable_hand)),
-                np.int64(observable_hand_index)
-            )
+                np.int64(observable_hand_index),
+            ),
         }
 
     @staticmethod
@@ -188,9 +186,9 @@ class BalatroEnv(gym.Env):
         return self.game_state.blind_chips * 100
 
     def _lose_reward(self) -> int:
-        # NOTE: A lose reward that is really negative punishes the agent too harshly for 
+        # NOTE: A lose reward that is really negative punishes the agent too harshly for
         #       being in a state where it might not even be possible to win from!
-        #       
+        #
         #       Let's instead rely on rewards.
         return 0
 
@@ -200,28 +198,28 @@ class BalatroEnv(gym.Env):
         18 bit embedding for a combination
 
         CHANGELOG:
-            The 9 bit representation isn't great because it forces the model to 
-            learn the difference between an embedding where the action bit is ON vs 
-            when it is OFF. It is better if we have two distinct 8-bit sections for 
+            The 9 bit representation isn't great because it forces the model to
+            learn the difference between an embedding where the action bit is ON vs
+            when it is OFF. It is better if we have two distinct 8-bit sections for
             hand action vs discard action.
-        """ 
-        assert(0 <= action < 436)
+        """
+        assert 0 <= action < 436
         embedding = [0] * 16
         index_offset = 0 if action < 218 else 8
 
         action %= 218
         k = 1
-        while action >= comb(8,k):
-            action -= comb(8,k)
+        while action >= comb(8, k):
+            action -= comb(8, k)
             k += 1
-        c = BalatroEnv.unrank_combination(8,k,action)
+        c = BalatroEnv.unrank_combination(8, k, action)
 
         for i in c:
-            embedding[index_offset+i] = 1
+            embedding[index_offset + i] = 1
         return embedding
 
     def action_index_to_action(self, action: int) -> Action:
-        assert(0 <= action < 436)
+        assert 0 <= action < 436
         """
         Step 1. Order game_state.observable_hand
         Step 2. Determine hand action / discard action (i < 218 => hand action)
@@ -235,21 +233,21 @@ class BalatroEnv(gym.Env):
             ...
             [218,226)   --> 1C8 discard action
             ...
-        """ 
-        # TODO: how to actions translate when the observable_hand has fewer than 
+        """
+        # TODO: how to actions translate when the observable_hand has fewer than
         #       8 cards??
-        
+
         ordered_cards = self.game_state.observable_hand
-        assert(8 == len(ordered_cards)) # we hard-code that there are 8 cards
+        assert 8 == len(ordered_cards)  # we hard-code that there are 8 cards
         ordered_cards.sort(key=Card.to_int)
         action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
         action %= 218
-        
+
         k = 1
-        while action >= comb(8,k):
-            action -= comb(8,k)
+        while action >= comb(8, k):
+            action -= comb(8, k)
             k += 1
 
-        c = self.unrank_combination(8,k,action)
+        c = self.unrank_combination(8, k, action)
         cards = [ordered_cards[i] for i in c]
         return Action(action_type, cards)

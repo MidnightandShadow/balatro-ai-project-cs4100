@@ -1,5 +1,6 @@
 # Not sure how to get rid of this... lmk if someone finds a workaround
 import sys
+
 sys.path.extend([".", "./src"])
 
 import torch
@@ -22,14 +23,17 @@ PRECISION = 3
 DISCARD = "DISCARD"
 POLICY_NET = None
 
+
 def clamp(n, l, h):
     return max(min(n, h), l)
+
 
 def freq_len(freq_map):
     tot = 0
     for k in freq_map:
         tot += freq_map[k]
     return tot
+
 
 def freq_half(freq_map):
     tot = 0
@@ -39,11 +43,13 @@ def freq_half(freq_map):
         for k in freq_map:
             freq_map[k] //= 2
 
+
 def freq_to_prob(freq_map):
     tot = 0
     for k in freq_map:
         tot += freq_map[k]
-    return {k: round(100*freq_map[k]/tot, PRECISION) for k in freq_map}
+    return {k: round(100 * freq_map[k] / tot, PRECISION) for k in freq_map}
+
 
 def main():
     global POLICY_NET
@@ -60,31 +66,32 @@ def main():
 
     # source: autoencoder/decoder.py
     decoder = torch.load("models/decoder.pth", weights_only=False)
-    agent = DQNAgent(env, lambda: nn.Sequential(
-        CardEmbedding(0,8,63),
-        PositionalEncoding(18),
-
-        # Transformer
-        nn.TransformerEncoderLayer(18,18),
-
-        Select(1),
-        nn.Flatten(),
-
-        nn.Linear(18,9),
-        nn.Sigmoid(),
-        decoder,
-    ), EPS_DECAY=10**4)
-    summary(agent.policy_net, (1,1,63))
+    agent = DQNAgent(
+        env,
+        lambda: nn.Sequential(
+            CardEmbedding(0, 8, 63),
+            PositionalEncoding(18),
+            # Transformer
+            nn.TransformerEncoderLayer(18, 18),
+            Select(1),
+            nn.Flatten(),
+            nn.Linear(18, 16),
+            nn.Sigmoid(),
+            decoder,
+        ),
+        EPS_DECAY=10**4,
+    )
+    summary(agent.policy_net, (1, 1, 63))
     print("\n")
     win_counter = 0
-    avg_score_chips = 70        # estimate
+    avg_score_chips = 70  # estimate
     ALPHA = 0.001
     HIGH = 0.001
-    avg_reward_per_hand = 10    # estimate
+    avg_reward_per_hand = 10  # estimate
 
     nn_discards, nn_actions = 0, 0
     nn_hand_freq = {}
-    
+
     rand_discards, rand_actions = 0, 0
     rand_hand_freq = {}
 
@@ -93,17 +100,20 @@ def main():
     def print_if(game_num, *args, **kwargs):
         if game_num % PRINT_FREQ == 0:
             print(*args, **kwargs)
-    
-    for game_num in range(1,NUM_GAMES+1):
-        print_if(game_num,  f"=== STARTING GAME #{game_num} {win_counter=} {agent.eps_threshold=:.3f} "
-                            f"{avg_score_chips=:.3f} {avg_reward_per_hand=:.3f} ===")
+
+    for game_num in range(1, NUM_GAMES + 1):
+        print_if(
+            game_num,
+            f"=== STARTING GAME #{game_num} {win_counter=} {agent.eps_threshold=:.3f} "
+            f"{avg_score_chips=:.3f} {avg_reward_per_hand=:.3f} ===",
+        )
         cur_state, _ = env.reset()
         done = False
         rewards = []
         nn_rewards = []
         hand_types = []
         while not done:
-            k,rank = cur_state["observable_hand"]
+            k, rank = cur_state["observable_hand"]
             action = agent.get_action(cur_state)
             s = "" if agent.was_last_action_nn else "@"
             try:
@@ -112,33 +122,48 @@ def main():
 
                 # Collect "Random Agent" Statistics
                 agent_was_random = not agent.was_last_action_nn
-                if agent_was_random and info["previous_action"].action_type == ActionType.HAND:
-                    scored_hand = hand_to_scored_hand(info["previous_action"].played_hand).poker_hand.name
+                if (
+                    agent_was_random
+                    and info["previous_action"].action_type == ActionType.HAND
+                ):
+                    scored_hand = hand_to_scored_hand(
+                        info["previous_action"].played_hand
+                    ).poker_hand.name
                     if scored_hand not in rand_hand_freq:
                         rand_hand_freq[scored_hand] = 0
                     rand_hand_freq[scored_hand] += 1
                 if agent_was_random:
                     rand_actions += 1
-                if agent_was_random and info["previous_action"].action_type == ActionType.DISCARD:
+                if (
+                    agent_was_random
+                    and info["previous_action"].action_type == ActionType.DISCARD
+                ):
                     rand_discards += 1
 
-
                 # Collect "NN Agent" Statistics
-                if agent.was_last_action_nn and info["previous_action"].action_type == ActionType.HAND:
-                    scored_hand = hand_to_scored_hand(info["previous_action"].played_hand).poker_hand.name
+                if (
+                    agent.was_last_action_nn
+                    and info["previous_action"].action_type == ActionType.HAND
+                ):
+                    scored_hand = hand_to_scored_hand(
+                        info["previous_action"].played_hand
+                    ).poker_hand.name
                     if scored_hand not in nn_hand_freq:
                         nn_hand_freq[scored_hand] = 0
                     nn_hand_freq[scored_hand] += 1
                     hand_types.append(scored_hand)
                     avg_reward_per_hand = clamp(
-                        (1-HIGH) * avg_reward_per_hand + HIGH * reward,
+                        (1 - HIGH) * avg_reward_per_hand + HIGH * reward,
                         avg_reward_per_hand - 1,
-                        avg_reward_per_hand + 1
+                        avg_reward_per_hand + 1,
                     )
 
                 if agent.was_last_action_nn:
                     nn_actions += 1
-                if agent.was_last_action_nn and info["previous_action"].action_type == ActionType.DISCARD:
+                if (
+                    agent.was_last_action_nn
+                    and info["previous_action"].action_type == ActionType.DISCARD
+                ):
                     nn_discards += 1
                 if agent.was_last_action_nn:
                     nn_rewards.append((s + str(info["previous_action"]), reward))
@@ -149,7 +174,9 @@ def main():
                 done = terminated
 
             except IllegalActionException:
-                agent.update(cur_state, action, INVALID_ACTION_PUNISHMENT, True, cur_state)
+                agent.update(
+                    cur_state, action, INVALID_ACTION_PUNISHMENT, True, cur_state
+                )
                 rewards.append((s + "INVALID ACTION!", INVALID_ACTION_PUNISHMENT))
                 pass
 
@@ -163,17 +190,23 @@ def main():
         print_if(game_num, f"{freq_to_prob(rand_hand_freq) = }")
         print_if(game_num, f"{freq_len(nn_hand_freq) = }")
         print_if(game_num, f"{freq_len(rand_hand_freq) = }")
-        print_if(game_num, f"nn_discard_prob = {round(100*nn_discards/(nn_actions+1), PRECISION)}%")
-        print_if(game_num, f"rand_discard_prob = {round(100*rand_discards/(rand_actions+1), PRECISION)}%")
+        print_if(
+            game_num,
+            f"nn_discard_prob = {round(100*nn_discards/(nn_actions+1), PRECISION)}%",
+        )
+        print_if(
+            game_num,
+            f"rand_discard_prob = {round(100*rand_discards/(rand_actions+1), PRECISION)}%",
+        )
         print_if(game_num)
 
-        if avg_score_chips == 0: 
+        if avg_score_chips == 0:
             avg_score_chips = env.game_state.scored_chips
         # A maximum increase of 1 is allowed
         avg_score_chips = clamp(
-            (1-ALPHA)*avg_score_chips + ALPHA*(env.game_state.scored_chips),
+            (1 - ALPHA) * avg_score_chips + ALPHA * (env.game_state.scored_chips),
             avg_score_chips - 1,
-            avg_score_chips + 1
+            avg_score_chips + 1,
         )
 
         freq_half(nn_hand_freq)
@@ -184,13 +217,13 @@ def main():
         if game_num % 10 == 0:
             torch.save(POLICY_NET.state_dict(), "model.chk")
 
+
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
         print("Saving...")
-        #if POLICY_NET != None:
+        # if POLICY_NET != None:
         #    if input("Would you like to save the NN? [Y/n] ") in ["yes", "y", "Y", ""]:
         #       torch.save(POLICY_NET.state_dict(), input("path: "))
         torch.save(POLICY_NET, "model.chk")
-
