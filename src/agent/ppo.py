@@ -16,38 +16,37 @@ SKIP = 1000
 CAPACITY = 1000
 BATCH_SIZE = 128
 TRAIN_FREQ = 1
-GAMMA = 0.99  # no discount since the # of moves it takes to win doesn't matter
+GAMMA = 0.97
 EPS_START = 0.90
 EPS_END = 0.05
 TAU = 0.005
-LR = 1e-4
+
 
 class PPOAgent:
-    def __init__(self, env, actor_factory, actor_critic_factory, EPS_CLIP=10**-4):
+    def __init__(self, env, actor_factory, actor_critic_factory, EPS_CLIP=0.2):
         self.env = env
         self.actor = actor_factory().to(device)
         self.critic = actor_critic_factory().to(device)
         self.memory = ReplayValueMemory(CAPACITY)
-        self.gamma = 0.99
+        self.gamma = GAMMA
         self.training_sessions = 2000
         self.mse_loss = torch.nn.MSELoss()
         self.steps_done = 0
         self.eps_clip = EPS_CLIP
-        self.optimizer = torch.optim.AdamW(
+        self.optimizer = torch.optim.Adam(
             list(self.actor.parameters()) + list(self.critic.parameters())
         )
-        self.value_loss_coef = 0.5
+        self.value_loss_coef = 0.6
         self.entropy_coef = 0.5
-        
 
     def update(
         self,
-        cur_state, # obs
+        cur_state,  # obs
         action: int,
         log_prob: float,
         reward_f: float,
         terminated: bool,
-        next_state, # obs
+        next_state,  # obs
     ):
         reward = torch.tensor([reward_f])
 
@@ -58,16 +57,14 @@ class PPOAgent:
         if terminated:
             next_state = None
         else:
-            next_state = torch.tensor(
-                cur_state, dtype=torch.float32
-            )
+            next_state = torch.tensor(cur_state, dtype=torch.float32)
 
         state_val = self.critic(cur_state)
 
-        assert(reward is not None)
+        assert reward is not None
         # Store the transition in memory
         self.memory.push(
-            torch.tensor(cur_state, dtype=torch.float32), 
+            torch.tensor(cur_state, dtype=torch.float32),
             torch.tensor([action], dtype=torch.long),
             next_state,
             log_prob,
@@ -76,7 +73,7 @@ class PPOAgent:
         )
 
     def get_action_and_value(self, state) -> tuple[tuple[int, float], float]:
-        """ (action, log_prob), value """
+        """(action, log_prob), value"""
         input = NNAgent.convert_state_to_input(state)
         output = self.actor(torch.from_numpy(input))
         if output.shape[-1] != 436:
@@ -84,27 +81,20 @@ class PPOAgent:
 
         with torch.no_grad():
             if len(output.shape) == 3:
-                p = output[0,0,:].cpu().numpy()
+                p = output[0, 0, :].cpu().numpy()
             else:
-                p = output[0,:].cpu().numpy()
+                p = output[0, :].cpu().numpy()
             ind = np.argmax(p).item()
             self.steps_done += 1
-            return (ind, np.log(p[ind])), self.critic(torch.from_numpy(input)).item() # type: ignore
-
-
-    def get_action(self, state) -> int:
-        return self.get_action_and_value(state)[0][0]
+            return (ind, np.log(p[ind])), self.critic(torch.from_numpy(input)).item()  # type: ignore
 
     def discounted_returns(self, batch):
-        """ Truncated version of GAE """
+        """Truncated version of GAE"""
         transitions = TransitionValue(*zip(*batch))
         returns = []
         discounted_reward = 0
-        for reward, nxt_state in zip(reversed(transitions.reward), reversed(transitions.next_state)):
-            assert(reward is not None)
-            done = nxt_state is None
-            if done: 
-                discounted_reward = 0
+        for reward in reversed(transitions.reward):
+            assert reward is not None
             discounted_reward = reward + self.gamma * discounted_reward
             returns.insert(0, discounted_reward)
         returns = np.array(returns)
@@ -112,7 +102,7 @@ class PPOAgent:
         return returns
 
     def optimize_model(self):
-        """ batching data """
+        """batching data"""
         if len(self.memory) < BATCH_SIZE:
             return
 
@@ -122,14 +112,14 @@ class PPOAgent:
 
         state_vals = torch.tensor(transitions.state_value)
         advantages = discounted_rewards - state_vals
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6) 
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-6)
 
-        ITERATIONS = 1000
+        ITERATIONS = 20
         for i in range(ITERATIONS):
             # (B, 436)
 
             action_probabilities = self.actor(torch.cat(transitions.state, dim=0))
-            action_probabilities = action_probabilities[:,transitions.action]
+            action_probabilities = action_probabilities[:, transitions.action]
             actor_log_probs = torch.log(action_probabilities)
 
             old_log_probs = torch.tensor(transitions.logprobs)
@@ -138,7 +128,9 @@ class PPOAgent:
 
             # Finding L^{CLIP} inner min LHS and RHS
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
+            surr2 = (
+                torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+            )
 
             # Calculating -L^{CLIP} => it is negative because we want adam to optimize
             l_clip = -torch.min(surr1, surr2).mean()
@@ -147,9 +139,15 @@ class PPOAgent:
             critic_loss = self.mse_loss(state_values, discounted_rewards)
 
             # entropy.shape: (B,)
-            entropy = torch.sum(action_probabilities * torch.log(action_probabilities), dim=-1)
+            entropy = torch.sum(
+                action_probabilities * torch.log(action_probabilities), dim=-1
+            )
 
-            loss = l_clip + self.value_loss_coef * critic_loss - self.entropy_coef * entropy.mean()
+            loss = (
+                l_clip
+                + self.value_loss_coef * critic_loss
+                - self.entropy_coef * entropy.mean()
+            )
 
             self.optimizer.zero_grad()
             loss.backward()
