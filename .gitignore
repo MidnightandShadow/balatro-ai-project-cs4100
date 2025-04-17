@@ -90,3 +90,5 @@ env/
 model.bin
 model.chk
 models/
+*.pth
+results/

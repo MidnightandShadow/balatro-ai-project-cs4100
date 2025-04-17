@@ -7,5 +7,7 @@ class Range(nn.Module):
         self.r = r
 
     def forward(self, x):
-        assert(len(x.shape) == 2)
-        return x[:,self.l:self.r]
+        if len(x.shape) == 2:
+            return x[:,self.l:self.r]
+        elif len(x.shape) == 3:
+            return x[:,:,self.l:self.r]

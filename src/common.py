@@ -41,6 +41,9 @@ class CardAttribute(Enum):
     SUIT = 2
 
 
+rank_inv_mapping = {r.value:r for r in Rank}
+suit_inv_mapping = {r.value:r for r in Suit}
+
 class Card:
     def __init__(self, rank: Rank, suit: Suit):
         self.rank = rank
@@ -79,8 +82,6 @@ class Card:
 
     @staticmethod
     def from_int(i : int) -> Card:
-        rank_inv_mapping = {r.value:r for r in Rank}
-        suit_inv_mapping = {r.value:r for r in Suit}
         return Card(rank_inv_mapping[(i%13) + 2], suit_inv_mapping[i // 13])
 
     @staticmethod

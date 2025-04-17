@@ -23,11 +23,11 @@ DEBUG = False
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-SKIP = 2000
-MEM_SIZE = 2000
-BATCH_SIZE = 256
+SKIP = 5000
+MEM_SIZE = 5000
+BATCH_SIZE = 512
 TRAIN_FREQ = 1
-GAMMA = 0.95  # no discount since the # of moves it takes to win doesn't matter
+GAMMA = 0  # no discount since the # of moves it takes to win doesn't matter
 EPS_START = 0.90
 EPS_END = 0.05
 TAU = 0.005
@@ -60,6 +60,7 @@ class DQNAgent(NNAgent):
         self.EPS_DECAY = EPS_DECAY
 
         self.steps_done = 0
+        self.loss_buffer = []
 
     def update(
         self,
@@ -120,7 +121,7 @@ class DQNAgent(NNAgent):
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
                 # print(pn := self.policy_net(torch.from_numpy(input)))
-                output = self.policy_net(torch.from_numpy(input))
+                output = self.policy_net(torch.from_numpy(input).to(device))
                 if output.shape[-1] != 436:
                     raise Exception("OUTPUT has invalid shape:", output.shape)
                 if len(output.shape) == 3:
@@ -153,7 +154,7 @@ class DQNAgent(NNAgent):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
-        pnout = self.policy_net(state_batch)
+        pnout = self.policy_net(state_batch.to(device))
         if pnout.shape[-1] != 436:
             raise Exception("PNOUT has invalid shape:", pnout.shape)
         if len(pnout.shape) == 2:
@@ -182,6 +183,7 @@ class DQNAgent(NNAgent):
             state_action_values, 
             expected_state_action_values.unsqueeze(1).unsqueeze(1)
         )
+        self.loss_buffer.append(loss)
 
         # Optimize the model
         self.optimizer.zero_grad()

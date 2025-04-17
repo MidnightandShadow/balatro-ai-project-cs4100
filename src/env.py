@@ -13,6 +13,8 @@ from src.constants import (
 from src.game_state import GameState, generate_deck
 from src.observer_manager import ObserverManager
 from src.simulator import simulate_turn
+from src.rewards.reward import Reward
+from src.rewards.chips_scored import ChipsScored
 
 MAX_CHIPS = 100_000
 
@@ -28,10 +30,9 @@ class BalatroEnv(gym.Env):
     Represents our Balatro GameState as an AI environment following the gymnasium Env
     interface. Assumes src.constants.OBSERVABLE_HAND_SIZE = 8.
     """
-
-    # TODO: pass in a GameStateFactory, then call factory.create to create a new 
-    #       GameState.
-    def __init__(self, game_state: GameState, observer_manager: ObserverManager):
+    # TODO GameState factory needs to be passed in here....
+    def __init__(self, game_state: GameState, observer_manager: ObserverManager,
+                 reward=ChipsScored()):
         self.game_state = game_state
         self.observer_manager = observer_manager
 
@@ -52,6 +53,7 @@ class BalatroEnv(gym.Env):
                 )
             }
         )
+        self.reward : Reward = reward
 
         # See description.md:
         # We have 436 actions corresponding to playing a Hand or Discard of 1 - 5 card
@@ -109,22 +111,7 @@ class BalatroEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def _calculate_reward(self, prev_state, action, nxt_state) -> int:
-        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
-            types of rewards """
-        agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
-        is_discard = action.action_type == ActionType.DISCARD
-        ph = hand_to_scored_hand(action.played_hand).poker_hand
-        ignored_hands = [PokerHand.HIGH_CARD]
-        ignore = ph in ignored_hands
-        delta = 0 if is_discard else (-20 if ignore else agent_score_difference)
-        discard_high_card_reward = 100 if (ph == PokerHand.HIGH_CARD and is_discard) else -10
-        #return discard_high_card_reward + delta + (
-        return (
-            self._win_reward() * prev_state.hand_actions
-            if nxt_state.is_game_over() and self.game_state.did_player_win()
-            else self._lose_reward() + 80*(nxt_state.blind_chips - nxt_state.scored_chips) if nxt_state.is_game_over()
-            else 0
-        )
+        return self.reward.apply(prev_state, action, nxt_state)
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -186,16 +173,6 @@ class BalatroEnv(gym.Env):
         anything that needs to be here.
         """
         return {}
-
-    def _win_reward(self) -> int:
-        return self.game_state.blind_chips * 100
-
-    def _lose_reward(self) -> int:
-        # NOTE: A lose reward that is really negative punishes the agent too harshly for 
-        #       being in a state where it might not even be possible to win from!
-        #       
-        #       Let's instead rely on rewards.
-        return self.game_state.blind_chips * -100
 
     @staticmethod
     def action_index_to_embedding(action: int) -> list[int]:
