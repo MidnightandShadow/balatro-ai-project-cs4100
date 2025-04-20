@@ -32,7 +32,7 @@ def play_a_single_default_game_with_a_single_strategy_and_observe_it(
 
 
 def play_games_with_a_single_strategy(
-    strategy: Strategy, games_to_play=1, blind_chips=SMALL_BLIND_CHIPS
+    stratey: Strategy, games_to_play=1, blind_chips=SMALL_BLIND_CHIPS
 ):
     print("GAME START")
     print(f"Chips to beat: {blind_chips}\nStrategy chosen: {strategy}")

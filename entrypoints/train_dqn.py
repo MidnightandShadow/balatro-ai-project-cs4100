@@ -16,7 +16,7 @@ from src.env import BalatroEnv
 from src.agent.dqn import DQNAgent
 
 NUM_GAMES = 1_000_000
-INVALID_ACTION_PUNISHMENT = -100
+INVALID_ACTION_PUNISHMENT = -1000
 FREQ_MAP_MAX = 20_000
 PRECISION = 3
 DISCARD = "DISCARD"
@@ -60,27 +60,38 @@ def main():
 
     # source: autoencoder/decoder.py
     decoder = torch.load("models/decoder.pth", weights_only=False)
+    # Since we have already trained the decoder's parameters, we don't need to retrain
+    for c in decoder.parameters():
+        c.requires_grad = False
+
     agent = DQNAgent(env, lambda: nn.Sequential(
         CardEmbedding(0,8,63),
-        PositionalEncoding(18),
 
         # Transformer
-        nn.TransformerEncoderLayer(18,18),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
+        nn.TransformerEncoderLayer(26,26,dim_feedforward=50),
 
         Select(1),
         nn.Flatten(),
 
-        nn.Linear(18,9),
+        nn.Linear(26,16),
         nn.Sigmoid(),
         decoder,
     ), EPS_DECAY=10**4)
     summary(agent.policy_net, (1,1,63))
     print("\n")
     win_counter = 0
-    avg_score_chips = 70        # estimate
-    ALPHA = 0.001
-    HIGH = 0.001
-    avg_reward_per_hand = 10    # estimate
+    avg_score_chips = 70.0        # estimate
+    ALPHA = 0.01
+    HIGH = 0.01
+    avg_reward_per_hand = 10.0    # estimate
 
     nn_discards, nn_actions = 0, 0
     nn_hand_freq = {}
@@ -95,8 +106,7 @@ def main():
             print(*args, **kwargs)
     
     for game_num in range(1,NUM_GAMES+1):
-        print_if(game_num,  f"=== STARTING GAME #{game_num} {win_counter=} {agent.eps_threshold=:.3f} "
-                            f"{avg_score_chips=:.3f} {avg_reward_per_hand=:.3f} ===")
+        print_if(game_num,  f"=== STARTING GAME #{game_num} {win_counter=} {agent.eps_threshold=:.3f} {avg_score_chips=:.3f} {avg_reward_per_hand=:.3f} ===")
         cur_state, _ = env.reset()
         done = False
         rewards = []
@@ -130,11 +140,8 @@ def main():
                         nn_hand_freq[scored_hand] = 0
                     nn_hand_freq[scored_hand] += 1
                     hand_types.append(scored_hand)
-                    avg_reward_per_hand = clamp(
-                        (1-HIGH) * avg_reward_per_hand + HIGH * reward,
-                        avg_reward_per_hand - 1,
-                        avg_reward_per_hand + 1
-                    )
+                    score_delta = (cur_state["chips_left"] - nxt_state["chips_left"])[0]
+                    avg_reward_per_hand = (1-ALPHA) * avg_reward_per_hand + ALPHA * score_delta
 
                 if agent.was_last_action_nn:
                     nn_actions += 1
@@ -169,12 +176,7 @@ def main():
 
         if avg_score_chips == 0: 
             avg_score_chips = env.game_state.scored_chips
-        # A maximum increase of 1 is allowed
-        avg_score_chips = clamp(
-            (1-ALPHA)*avg_score_chips + ALPHA*(env.game_state.scored_chips),
-            avg_score_chips - 1,
-            avg_score_chips + 1
-        )
+        avg_score_chips = (1-ALPHA)*avg_score_chips + ALPHA*(env.game_state.scored_chips)
 
         freq_half(nn_hand_freq)
         freq_half(rand_hand_freq)

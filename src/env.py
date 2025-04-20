@@ -112,14 +112,17 @@ class BalatroEnv(gym.Env):
         """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
             types of rewards """
         agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
+        is_discard = action.action_type == ActionType.DISCARD
         ph = hand_to_scored_hand(action.played_hand).poker_hand
         ignored_hands = [PokerHand.HIGH_CARD]
         ignore = ph in ignored_hands
-        delta = 0 if ignore else agent_score_difference
+        delta = 0 if is_discard else (-20 if ignore else agent_score_difference)
+        discard_high_card_reward = 100 if (ph == PokerHand.HIGH_CARD and is_discard) else -10
+        #return discard_high_card_reward + delta + (
         return (
             self._win_reward() * prev_state.hand_actions
             if nxt_state.is_game_over() and self.game_state.did_player_win()
-            else self._lose_reward() if nxt_state.is_game_over()
+            else self._lose_reward() + 80*(nxt_state.blind_chips - nxt_state.scored_chips) if nxt_state.is_game_over()
             else 0
         )
 
@@ -192,7 +195,7 @@ class BalatroEnv(gym.Env):
         #       being in a state where it might not even be possible to win from!
         #       
         #       Let's instead rely on rewards.
-        return 0
+        return self.game_state.blind_chips * -100
 
     @staticmethod
     def action_index_to_embedding(action: int) -> list[int]:
