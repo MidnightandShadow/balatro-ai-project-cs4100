@@ -7,7 +7,6 @@
 [Ll]ib
 [Ll]ib64
 [Ll]ocal
-[Ss]cripts
 pyvenv.cfg
 .venv
 pip-selfcheck.json
@@ -88,4 +87,8 @@ __pypackages__/
 
 *.swp
 env/
+model.bin
+model.chk
+models/
 temp_ib/
+results/

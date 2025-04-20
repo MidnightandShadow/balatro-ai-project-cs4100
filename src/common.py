@@ -84,24 +84,25 @@ class Card:
         return Card(rank_inv_mapping[(i%13) + 2], suit_inv_mapping[i // 13])
 
     @staticmethod
-    def int_to_emb(i : int) -> list[int]:
+    def int_to_emb(i : int, pos: int) -> list[int]:
         """
-        An embedding of a card is a 18-bit array representing the suit+value combination
+        An embedding of a card is a (26,) array representing the suit+value combination
         """
-        emb = [0] * 18
+        emb = [0] * 26
         suit = i // 13
         rank = i % 13
         emb[suit] = 1
         emb[rank + 4] = 1
+        emb[pos+17] = 1
         emb[-1] = 1
         return emb
 
 
     def to_emb(self) -> list[int]:
         """
-        An embedding of a card is a 18-bit array representing the suit+value combination
+        An embedding of a card is a (26,) array representing the suit+value combination
         """
-        emb = [0] * 18
+        emb = [0] * 26
         emb[self.suit.value] = 1
         emb[self.rank.value + 4] = 1
         emb[-1] = 1 # bias

@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 
 from src.common import Action, ActionType, Card
+from src.common import hand_to_scored_hand, PokerHand
 from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS
 from src.constants import (
     SMALL_BLIND_CHIPS
@@ -97,6 +98,7 @@ class BalatroEnv(gym.Env):
         initial_scored_chips = self.game_state.scored_chips
 
         act = self.action_index_to_action(self.game_state, action)
+        previous_game_state = self.game_state.copy()
         self.game_state = simulate_turn(
             self.game_state,
             act,
@@ -105,18 +107,28 @@ class BalatroEnv(gym.Env):
 
         terminated = self.game_state.is_game_over()
         truncated = False
-        agent_score_difference = self.game_state.scored_chips - initial_scored_chips
-        reward = (
-            self._win_reward() if terminated and self.game_state.did_player_win()
-            # We want the agent to play the best it can, even if it loses
-            else self._lose_reward() + agent_score_difference if terminated
-            else agent_score_difference
-        )
+        reward = self._calculate_reward(previous_game_state, act, self.game_state)
         observation = self._get_obs()
         info = {"previous_action": act}
-
         return observation, reward, terminated, truncated, info
 
+    def _calculate_reward(self, prev_state, action, nxt_state) -> int:
+        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple
+            types of rewards """
+        agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
+        is_discard = action.action_type == ActionType.DISCARD
+        ph = hand_to_scored_hand(action.played_hand).poker_hand
+        ignored_hands = [PokerHand.HIGH_CARD]
+        ignore = ph in ignored_hands
+        delta = 0 if is_discard else (-20 if ignore else agent_score_difference)
+        discard_high_card_reward = 100 if (ph == PokerHand.HIGH_CARD and is_discard) else -10
+        #return discard_high_card_reward + delta + (
+        return (
+            self._win_reward() * prev_state.hand_actions
+            if nxt_state.is_game_over() and self.game_state.did_player_win()
+            else self._lose_reward() + 80*(nxt_state.blind_chips - nxt_state.scored_chips) if nxt_state.is_game_over()
+            else 0
+        )
     @classmethod
     def get_action_space_possibly_without_discards(cls, game_state: GameState):
         """
@@ -197,14 +209,40 @@ class BalatroEnv(gym.Env):
         return {}
 
     def _win_reward(self) -> int:
-        return self.game_state.blind_chips * 5
+        return self.game_state.blind_chips * 100
 
     def _lose_reward(self) -> int:
         # NOTE: A lose reward that is really negative punishes the agent too harshly for 
         #       being in a state where it might not even be possible to win from!
         #       
         #       Let's instead rely on rewards.
-        return 0
+        return self.game_state.blind_chips * -100
+
+    @staticmethod
+    def action_index_to_embedding(action: int) -> list[int]:
+        """
+        18 bit embedding for a combination
+
+        CHANGELOG:
+            The 9 bit representation isn't great because it forces the model to
+            learn the difference between an embedding where the action bit is ON vs
+            when it is OFF. It is better if we have two distinct 8-bit sections for
+            hand action vs discard action.
+        """
+        assert(0 <= action < 436)
+        embedding = [0] * 16
+        index_offset = 0 if action < 218 else 8
+
+        action %= 218
+        k = 1
+        while action >= comb(8,k):
+            action -= comb(8,k)
+            k += 1
+        c = BalatroEnv.unrank_combination(8,k,action)
+
+        for i in c:
+            embedding[index_offset+i] = 1
+        return embedding
 
     @classmethod
     def action_index_to_action(cls, game_state: GameState, action: int) -> Action:
