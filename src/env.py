@@ -14,8 +14,7 @@ from src.constants import (
 from src.game_state import GameState
 from src.game_state import generate_deck
 from src.observer_manager import ObserverManager
-from src.player import Player
-from src.simulator import simulate_turn, simulate_game
+from src.simulator import simulate_turn
 
 MAX_CHIPS = 100_000
 
@@ -33,7 +32,8 @@ class BalatroEnv(gym.Env):
     """
 
     # TODO: pass in a GameStateFactory, then call factory.create to create a new 
-    #       GameState.
+    #       GameState. Currently, the passed in game_state is not being used, as
+    #       it is overridden upon the env reset (as expected).
     def __init__(self, game_state: GameState, observer_manager: ObserverManager):
         self.game_state = game_state
         self.observer_manager = observer_manager
@@ -96,7 +96,7 @@ class BalatroEnv(gym.Env):
 
         initial_scored_chips = self.game_state.scored_chips
 
-        act = self.action_index_to_action(action)
+        act = self.action_index_to_action(self.game_state, action)
         self.game_state = simulate_turn(
             self.game_state,
             act,
@@ -117,29 +117,8 @@ class BalatroEnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
-    def simulate_single_turn(self, action: int):
-        """
-        Simulates a game from the current state for one turn based on the given action_space action,
-        relying solely on the simulator. That is, this does not affect the current step of this env.
-        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
-        the environment because MCTS plans online and relies on a simulator.
-
-        :return: the resulting successor GameState
-        """
-        return simulate_turn(self.game_state, self.action_index_to_action(action), self.observer_manager)
-
-    def simulate_till_finished(self, game_state: GameState, player: Player):
-        """
-        Simulates a game from the given game_state until the end of the game, relying solely on the simulator.
-        That is, this does not affect the current step of this env.
-        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
-        the environment because MCTS plans online and relies on a simulator.
-
-        :return: true if the game resulted in a win, false otherwise
-        """
-        return simulate_game(game_state, player, self.observer_manager)
-
-    def get_action_space_possibly_without_discards(self):
+    @classmethod
+    def get_action_space_possibly_without_discards(cls, game_state: GameState):
         """
         Balatro does not let you even try to take a discard action if you have no discards left.
         So, if this game state has no discards left, this returns an action space corresponding to only hand actions.
@@ -148,10 +127,10 @@ class BalatroEnv(gym.Env):
         the environment because MCTS plans online and relies on a simulator.
         INVARIANT: 218 is the right size space because of the invariant established in action_index_to_action().
         """
-        if self.game_state.discard_actions == 0:
+        if game_state.discard_actions == 0:
             return gym.spaces.Discrete(218)
 
-        return self.action_space
+        return gym.spaces.Discrete(436)
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -227,7 +206,8 @@ class BalatroEnv(gym.Env):
         #       Let's instead rely on rewards.
         return 0
 
-    def action_index_to_action(self, action: int) -> Action:
+    @classmethod
+    def action_index_to_action(cls, game_state: GameState, action: int) -> Action:
         assert(0 <= action % 218 < 436)
         """
         Step 1. Order game_state.observable_hand
@@ -246,7 +226,7 @@ class BalatroEnv(gym.Env):
         # TODO: how to actions translate when the observable_hand has fewer than 
         #       8 cards??
         
-        ordered_cards = self.game_state.observable_hand
+        ordered_cards = game_state.observable_hand
         assert(8 == len(ordered_cards)) # we hard-code that there are 8 cards
         ordered_cards.sort(key=Card.to_int)
         action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
@@ -257,7 +237,7 @@ class BalatroEnv(gym.Env):
             action -= comb(8,k)
             k += 1
 
-        c = self.unrank_combination(8,k,action)
+        c = cls.unrank_combination(8,k,action)
         cards = [ordered_cards[i] for i in c]
         return Action(action_type, cards)
 
