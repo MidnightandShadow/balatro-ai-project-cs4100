@@ -66,10 +66,10 @@ def main():
     agent = PPOAgent(
         env,
         lambda: nn.Sequential(
-            nn.Linear(63, 16),
-            decoder,
+            nn.Linear(63, 436),
+            # decoder,
         ),
-        lambda: nn.Linear(63, 1),
+        lambda: nn.Sequential(nn.Linear(63, 1)),
     )
     summary(agent.actor, (1, 63))
     summary(agent.critic, (1, 1, 63))
@@ -90,7 +90,7 @@ def main():
     avg_score_chips_per_hand_plot = []
     hand_freq_prob_plot = []
 
-    TIME_STEPS = 500
+    TIME_STEPS = 2000
     ALPHA = 0.01
     win_counter = 0
 
@@ -197,7 +197,7 @@ def main():
 
     print("hand freq", hand_freq_prob_plot)
 
-    plt.plot(list(range(TIME_STEPS)), avg_score_chips_plot, "ro")
+    plt.plot(list(range(TIME_STEPS)), avg_score_chips_plot)
     plt.ylabel("Chip Score")
     plt.title('Average Chip Score Over Games')
     plt.xlabel("Games")
@@ -205,13 +205,19 @@ def main():
     plt.close()
 
 
-    plt.plot(list(range(TIME_STEPS)), avg_score_chips_per_hand_plot, "ro")
+    plt.plot(list(range(TIME_STEPS)), avg_score_chips_per_hand_plot)
     plt.ylabel("Chip Score Per Hand Action")
     plt.title('Average Chip Score Per Hand Action Over Games')
     plt.xlabel("Games")
     plt.savefig("avg_score_chips_per_hand_plot_ppo.png")
     plt.close()
 
+    plt.plot(list(range(len(agent.loss_list))), agent.loss_list)
+    plt.ylabel("Loss")
+    plt.title('Loss')
+    plt.xlabel("Games")
+    plt.savefig("loss_ppo.png")
+    plt.close()
 
 
 

@@ -3,20 +3,14 @@ from src.agent.device import device
 from src.agent.replay_memory import ReplayValueMemory, TransitionValue
 
 import torch
-import torch.nn as nn
-import torch.optim as optim
 
-import math
-import random
-import gc
-from typing import Callable
 import numpy as np
 
 SKIP = 1000
 CAPACITY = 1000
 BATCH_SIZE = 128
 TRAIN_FREQ = 1
-GAMMA = 0.97
+GAMMA = 0.99
 EPS_START = 0.90
 EPS_END = 0.05
 TAU = 0.005
@@ -37,7 +31,8 @@ class PPOAgent:
             list(self.actor.parameters()) + list(self.critic.parameters())
         )
         self.value_loss_coef = 0.6
-        self.entropy_coef = 0.5
+        self.entropy_coef = 0.4
+        self.loss_list = []
 
     def update(
         self,
@@ -88,6 +83,9 @@ class PPOAgent:
             self.steps_done += 1
             return (ind, np.log(p[ind])), self.critic(torch.from_numpy(input)).item()  # type: ignore
 
+    def get_action(self, state) -> int:
+        return self.get_action_and_value(state)[0][0]
+    
     def discounted_returns(self, batch):
         """Truncated version of GAE"""
         transitions = TransitionValue(*zip(*batch))
@@ -148,6 +146,8 @@ class PPOAgent:
                 + self.value_loss_coef * critic_loss
                 - self.entropy_coef * entropy.mean()
             )
+
+            self.loss_list.append(loss.item())
 
             self.optimizer.zero_grad()
             loss.backward()
