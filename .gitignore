@@ -90,5 +90,5 @@ env/
 model.bin
 model.chk
 models/
-temp_ib/
 results/
+temp_ib/
