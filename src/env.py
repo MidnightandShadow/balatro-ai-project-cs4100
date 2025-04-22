@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from typing import Any
 from math import comb
+from typing import Any
 
 import gymnasium as gym
 import numpy as np
 
-from src.common import Action, ActionType, Card, hand_to_scored_hand, PokerHand
+from src.common import Action, ActionType, Card
+from src.common import hand_to_scored_hand, PokerHand
+from src.constants import HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS
 from src.constants import (
-    HAND_ACTIONS, DISCARD_ACTIONS, NUM_CARDS, SMALL_BLIND_CHIPS 
+    SMALL_BLIND_CHIPS
 )
-from src.game_state import GameState, generate_deck
+from src.game_state import GameState
+from src.game_state import generate_deck
 from src.observer_manager import ObserverManager
 from src.simulator import simulate_turn
 
@@ -30,7 +33,8 @@ class BalatroEnv(gym.Env):
     """
 
     # TODO: pass in a GameStateFactory, then call factory.create to create a new 
-    #       GameState.
+    #       GameState. Currently, the passed in game_state is not being used, as
+    #       it is overridden upon the env reset (as expected).
     def __init__(self, game_state: GameState, observer_manager: ObserverManager):
         self.game_state = game_state
         self.observer_manager = observer_manager
@@ -93,7 +97,7 @@ class BalatroEnv(gym.Env):
 
         initial_scored_chips = self.game_state.scored_chips
 
-        act = self.action_index_to_action(action)
+        act = self.action_index_to_action(self.game_state, action)
         previous_game_state = self.game_state.copy()
         self.game_state = simulate_turn(
             self.game_state,
@@ -109,7 +113,7 @@ class BalatroEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def _calculate_reward(self, prev_state, action, nxt_state) -> int:
-        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple 
+        """ TODO move this into a `RewardStrategy` class so that we can abstract over multiple
             types of rewards """
         agent_score_difference = nxt_state.scored_chips - prev_state.scored_chips
         is_discard = action.action_type == ActionType.DISCARD
@@ -125,6 +129,20 @@ class BalatroEnv(gym.Env):
             else self._lose_reward() + 80*(nxt_state.blind_chips - nxt_state.scored_chips) if nxt_state.is_game_over()
             else 0
         )
+    @classmethod
+    def get_action_space_possibly_without_discards(cls, game_state: GameState):
+        """
+        Balatro does not let you even try to take a discard action if you have no discards left.
+        So, if this game state has no discards left, this returns an action space corresponding to only hand actions.
+        Otherwise, it returns the full action space.
+        This method is exposed for the sake of MCTS, which will need to simulate games at each step in
+        the environment because MCTS plans online and relies on a simulator.
+        INVARIANT: 218 is the right size space because of the invariant established in action_index_to_action().
+        """
+        if game_state.discard_actions == 0:
+            return gym.spaces.Discrete(218)
+
+        return gym.spaces.Discrete(436)
 
     # https://wkerl.me/papers/algorithms2021.pdf
     @staticmethod
@@ -179,6 +197,9 @@ class BalatroEnv(gym.Env):
             )
         }
 
+    def get_observable_state(self):
+        return self.game_state.game_state_to_observable_state()
+
     @staticmethod
     def _get_info():
         """
@@ -203,11 +224,11 @@ class BalatroEnv(gym.Env):
         18 bit embedding for a combination
 
         CHANGELOG:
-            The 9 bit representation isn't great because it forces the model to 
-            learn the difference between an embedding where the action bit is ON vs 
-            when it is OFF. It is better if we have two distinct 8-bit sections for 
+            The 9 bit representation isn't great because it forces the model to
+            learn the difference between an embedding where the action bit is ON vs
+            when it is OFF. It is better if we have two distinct 8-bit sections for
             hand action vs discard action.
-        """ 
+        """
         assert(0 <= action < 436)
         embedding = [0] * 16
         index_offset = 0 if action < 218 else 8
@@ -223,8 +244,9 @@ class BalatroEnv(gym.Env):
             embedding[index_offset+i] = 1
         return embedding
 
-    def action_index_to_action(self, action: int) -> Action:
-        assert(0 <= action < 436)
+    @classmethod
+    def action_index_to_action(cls, game_state: GameState, action: int) -> Action:
+        assert(0 <= action % 218 < 436)
         """
         Step 1. Order game_state.observable_hand
         Step 2. Determine hand action / discard action (i < 218 => hand action)
@@ -242,17 +264,36 @@ class BalatroEnv(gym.Env):
         # TODO: how to actions translate when the observable_hand has fewer than 
         #       8 cards??
         
-        ordered_cards = self.game_state.observable_hand
+        ordered_cards = game_state.observable_hand
         assert(8 == len(ordered_cards)) # we hard-code that there are 8 cards
         ordered_cards.sort(key=Card.to_int)
         action_type = ActionType.HAND if action < 218 else ActionType.DISCARD
         action %= 218
-        
+
         k = 1
         while action >= comb(8,k):
             action -= comb(8,k)
             k += 1
 
-        c = self.unrank_combination(8,k,action)
+        c = cls.unrank_combination(8,k,action)
         cards = [ordered_cards[i] for i in c]
         return Action(action_type, cards)
+
+    def action_to_action_index(self, action: Action) -> int:
+        action_type_constant = 218 if action.action_type == ActionType.DISCARD else 0
+
+        cards = action.played_hand
+        cards.sort(key=Card.to_int)
+        ordered_cards_as_int = [c.to_int() for c in cards]
+        k = len(cards)
+
+        total = action_type_constant
+        for i in range(1, k):
+            total += comb(8, i)
+
+        observable_hand_cards_as_int = [c.to_int() for c in self.get_observable_state().observable_hand]
+        observable_hand_cards_as_int.sort()
+        ordered_cards_as_int_wrt_obs_hand_index = [observable_hand_cards_as_int.index(c) for c in ordered_cards_as_int]
+        total += self.rank_combination(8, k, ordered_cards_as_int_wrt_obs_hand_index)
+        return total
+

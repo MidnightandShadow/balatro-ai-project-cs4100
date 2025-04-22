@@ -217,22 +217,20 @@ class InvariantViolatedException(Exception):
         super().__init__(f"INVARIANT VIOLATED: {message}")
 
 
-"""
-
-Returns a ScoredHand corresponding to the given played_hand as per the rules in
-description.md
-
-Matches are made in decreasing order of required number of cards in the hand
-(e.g. full-house before four-of-a-kind).
-
-The x-pair and x-of-a-kind checks rely on 
-group_cards_by_attribute_and_get_four_longest_sublists_if_present() and the invariants
-it establishes when grouping cards by rank in descending order.
-
-INVARIANT: played_hand is of length 1 - 5
-
-"""
 def hand_to_scored_hand(played_hand: list[Card]) -> ScoredHand:
+    """
+    Returns a ScoredHand corresponding to the given played_hand as per the rules in
+    description.md
+    
+    Matches are made in decreasing order of required number of cards in the hand
+    (e.g. full-house before four-of-a-kind).
+    
+    The x-pair and x-of-a-kind checks rely on
+    group_cards_by_attribute_and_get_four_longest_sublists_if_present() and the invariants
+    it establishes when grouping cards by rank in descending order.
+    
+    INVARIANT: played_hand is of length 1 - 5
+    """
     is_straight, is_flush = _is_straight(played_hand), _is_flush(played_hand)
 
     if is_straight and is_flush:
