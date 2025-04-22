@@ -90,3 +90,4 @@ env/
 model.bin
 model.chk
 models/
+results/
